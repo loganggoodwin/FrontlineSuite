@@ -93,7 +93,7 @@ namespace FrontlineSuite
     internal sealed class MainForm : Form
     {
         private const string AppName    = "Frontline Suite";
-        private const string AppVersion = "4.2.0";
+        private const string AppVersion = "4.3.0";
 
         private readonly Color _bg     = Color.FromArgb(10, 12, 16);
         private readonly Color _panel  = Color.FromArgb(17, 21, 32);
@@ -143,7 +143,7 @@ namespace FrontlineSuite
             root.RowCount = 3;
             root.ColumnCount = 1;
             root.Padding = new Padding(14);
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
             Controls.Add(root);
@@ -153,15 +153,21 @@ namespace FrontlineSuite
             _tabs = new TabControl();
             _tabs.Dock = DockStyle.Fill;
             _tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
-            _tabs.ItemSize = new Size(175, 36);
+            _tabs.ItemSize = new Size(132, 36);
+            _tabs.Multiline = true;
             _tabs.SizeMode = TabSizeMode.Fixed;
             _tabs.Appearance = TabAppearance.Normal;
             _tabs.BackColor = _bg;
             _tabs.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold);
             _tabs.DrawItem += DrawTab;
-            _tabs.Padding = new Point(10, 6);
+            _tabs.Padding = new Point(8, 6);
 
-            TabPage scannerPage = new TabPage("  Security Scanner");
+            TabPage dashboardPage = new TabPage("  Dashboard");
+            dashboardPage.BackColor = _bg;
+            dashboardPage.Padding = new Padding(0);
+            dashboardPage.Controls.Add(new DashboardPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted, delegate(int index) { _tabs.SelectedIndex = index; }));
+
+            TabPage scannerPage = new TabPage("  Security Scan");
             scannerPage.BackColor = _bg;
             scannerPage.Padding = new Padding(0);
             scannerPage.Controls.Add(new ScannerPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
@@ -206,6 +212,7 @@ namespace FrontlineSuite
             firewallPage.Padding = new Padding(0);
             firewallPage.Controls.Add(new FirewallPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
 
+            _tabs.TabPages.Add(dashboardPage);
             _tabs.TabPages.Add(scannerPage);
             _tabs.TabPages.Add(shieldPage);
             _tabs.TabPages.Add(healthPage);
@@ -215,9 +222,8 @@ namespace FrontlineSuite
             _tabs.TabPages.Add(cleanerPage);
             _tabs.TabPages.Add(hostsPage);
             _tabs.TabPages.Add(firewallPage);
-            _tabs.TabPages.Add(hostsPage);
 
-            _tabs.ItemSize = new Size(140, 36);
+            _tabs.ItemSize = new Size(132, 36);
 
             root.Controls.Add(_tabs, 0, 1);
             root.Controls.Add(BuildFooter(), 0, 2);
@@ -258,7 +264,7 @@ namespace FrontlineSuite
 
             Label title = new Label();
             title.AutoSize = true;
-            title.Location = new Point(92, 14);
+            title.Location = new Point(92, 12);
             title.Text = "FRONTLINE SUITE";
             title.ForeColor = _text;
             title.Font = new Font("Segoe UI Semibold", 22F, FontStyle.Bold);
@@ -266,8 +272,8 @@ namespace FrontlineSuite
 
             Label sub = new Label();
             sub.AutoSize = true;
-            sub.Location = new Point(96, 55);
-            sub.Text = "Security Scanner  •  Network Shield  •  System Health  •  Startup  •  Windows Update  •  Event Log  •  Junk Cleaner  •  Hosts File  •  Firewall";
+            sub.Location = new Point(96, 54);
+            sub.Text = "Local security, network, and system maintenance toolkit";
             sub.ForeColor = _muted;
             sub.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
             header.Controls.Add(sub);
@@ -276,10 +282,10 @@ namespace FrontlineSuite
             badge.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             badge.AutoSize = false;
             badge.TextAlign = ContentAlignment.MiddleRight;
-            badge.Size = new Size(380, 56);
-            badge.Text = "C# FALLBACK BUILD v" + AppVersion + "\r\nNo .NET SDK Required";
-            badge.ForeColor = _blue;
-            badge.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold);
+            badge.Size = new Size(390, 60);
+            badge.Text = "v" + AppVersion + "  •  LOCAL ONLY" + "\r\n" + (IsAdministrator() ? "ADMIN MODE ENABLED" : "STANDARD MODE - RUN AS ADMIN FOR FULL TOOLS");
+            badge.ForeColor = IsAdministrator() ? _blue : _orange;
+            badge.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
             header.Controls.Add(badge);
             header.Resize += delegate { badge.Location = new Point(header.ClientSize.Width - badge.Width - 20, 18); };
             badge.Location = new Point(800, 18);
@@ -292,9 +298,334 @@ namespace FrontlineSuite
             footer.Dock = DockStyle.Fill;
             footer.TextAlign = ContentAlignment.MiddleRight;
             footer.ForeColor = _muted;
-            footer.Text = "Frontline Tech Consulting, LLC  •  Local logs only  •  Only scan networks you own or have permission to assess";
+            footer.Text = "Frontline Tech Consulting, LLC  •  Local logs only  •  Use only on systems and networks you own or have permission to assess";
             footer.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
             return footer;
+        }
+
+        private static bool IsAdministrator()
+        {
+            try { return new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator); }
+            catch { return false; }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Dashboard tab
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal sealed class DashboardPanel : UserControl
+    {
+        private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
+        private readonly string _logsDir;
+        private readonly Action<int> _openTab;
+        private readonly List<Label> _dynamicLabels = new List<Label>();
+        private System.Windows.Forms.Timer _refreshTimer;
+
+        public DashboardPanel(string logsDir, Color bg, Color panel, Color panel2,
+            Color orange, Color blue, Color text, Color muted, Action<int> openTab)
+        {
+            _logsDir = logsDir;
+            _bg = bg; _panel = panel; _panel2 = panel2;
+            _orange = orange; _blue = blue; _text = text; _muted = muted;
+            _openTab = openTab;
+
+            Dock = DockStyle.Fill;
+            BackColor = _bg;
+            Build();
+            RefreshCards();
+
+            _refreshTimer = new System.Windows.Forms.Timer();
+            _refreshTimer.Interval = 15000;
+            _refreshTimer.Tick += delegate { RefreshCards(); };
+            _refreshTimer.Start();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && _refreshTimer != null) _refreshTimer.Dispose();
+            base.Dispose(disposing);
+        }
+
+        private void Build()
+        {
+            TableLayoutPanel root = new TableLayoutPanel();
+            root.Dock = DockStyle.Fill;
+            root.BackColor = _bg;
+            root.Padding = new Padding(0, 8, 0, 0);
+            root.ColumnCount = 1;
+            root.RowCount = 3;
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 165));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 218));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            Controls.Add(root);
+
+            root.Controls.Add(BuildHero(), 0, 0);
+            root.Controls.Add(BuildCards(), 0, 1);
+            root.Controls.Add(BuildWorkflow(), 0, 2);
+        }
+
+        private Control BuildHero()
+        {
+            Panel hero = new Panel();
+            hero.Dock = DockStyle.Fill;
+            hero.BackColor = _panel;
+            hero.Padding = new Padding(18);
+            hero.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(_orange, 3))
+                    e.Graphics.DrawLine(p, 0, hero.Height - 2, hero.Width, hero.Height - 2);
+            };
+
+            Label title = new Label();
+            title.AutoSize = true;
+            title.Location = new Point(22, 18);
+            title.Text = "Dashboard";
+            title.ForeColor = _text;
+            title.Font = new Font("Segoe UI Semibold", 22F, FontStyle.Bold);
+            hero.Controls.Add(title);
+
+            Label subtitle = new Label();
+            subtitle.AutoSize = false;
+            subtitle.Location = new Point(24, 62);
+            subtitle.Size = new Size(720, 44);
+            subtitle.Text = "Quick view of this PC, recent logs, and the safest next actions. Start with a scan, review your network, then export logs for customer documentation.";
+            subtitle.ForeColor = _muted;
+            subtitle.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular);
+            hero.Controls.Add(subtitle);
+
+            FlowLayoutPanel actions = new FlowLayoutPanel();
+            actions.Location = new Point(20, 112);
+            actions.Size = new Size(840, 44);
+            actions.BackColor = _panel;
+            actions.WrapContents = false;
+            hero.Controls.Add(actions);
+
+            actions.Controls.Add(ActionButton("Start Security Scan", delegate { _openTab(1); }));
+            actions.Controls.Add(ActionButton("Review Network", delegate { _openTab(2); }));
+            actions.Controls.Add(ActionButton("System Health", delegate { _openTab(3); }));
+            actions.Controls.Add(ActionButton("Open Logs", delegate { OpenLogsFolder(); }));
+
+            Label mode = new Label();
+            mode.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            mode.AutoSize = false;
+            mode.Size = new Size(300, 72);
+            mode.TextAlign = ContentAlignment.MiddleRight;
+            mode.Location = new Point(850, 22);
+            mode.ForeColor = IsAdministrator() ? _blue : _orange;
+            mode.Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold);
+            mode.Text = IsAdministrator() ? "ADMIN MODE\r\nAll tools available" : "STANDARD MODE\r\nRun as administrator for full tools";
+            hero.Controls.Add(mode);
+            hero.Resize += delegate { mode.Location = new Point(hero.ClientSize.Width - mode.Width - 24, 22); };
+
+            return hero;
+        }
+
+        private Button ActionButton(string text, EventHandler click)
+        {
+            Button btn = new Button();
+            btn.Text = text;
+            btn.Size = new Size(165, 36);
+            btn.Margin = new Padding(4, 2, 8, 2);
+            btn.BackColor = _panel2;
+            btn.ForeColor = _text;
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.FlatAppearance.BorderColor = _orange;
+            btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 39, 56);
+            btn.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
+            btn.Cursor = Cursors.Hand;
+            btn.Click += click;
+            return btn;
+        }
+
+        private Control BuildCards()
+        {
+            TableLayoutPanel grid = new TableLayoutPanel();
+            grid.Dock = DockStyle.Fill;
+            grid.BackColor = _bg;
+            grid.Padding = new Padding(0, 12, 0, 0);
+            grid.ColumnCount = 4;
+            grid.RowCount = 2;
+            for (int c = 0; c < 4; c++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            for (int r = 0; r < 2; r++) grid.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+
+            grid.Controls.Add(MetricCard("Security Mode", "Checking...", "Administrator access status", _blue), 0, 0);
+            grid.Controls.Add(MetricCard("Local IP", "Checking...", "Primary IPv4 address", _orange), 1, 0);
+            grid.Controls.Add(MetricCard("System Drive", "Checking...", "Free space on C:\\", _blue), 2, 0);
+            grid.Controls.Add(MetricCard("Recent Logs", "Checking...", "Files saved in logs folder", _orange), 3, 0);
+            grid.Controls.Add(MetricCard("Pending Reboot", "Checking...", "Windows servicing state", _orange), 0, 1);
+            grid.Controls.Add(MetricCard("Firewall", "Use manager", "Review enabled/disabled rules", _blue), 1, 1);
+            grid.Controls.Add(MetricCard("DNS", "Use shield", "Harden or reset DNS settings", _blue), 2, 1);
+            grid.Controls.Add(MetricCard("Last Refresh", "Checking...", "Dashboard auto-refreshes", _orange), 3, 1);
+            return grid;
+        }
+
+        private Panel MetricCard(string titleText, string valueText, string detailText, Color accent)
+        {
+            Panel card = new Panel();
+            card.Dock = DockStyle.Fill;
+            card.Margin = new Padding(0, 0, 10, 10);
+            card.BackColor = _panel2;
+            card.Padding = new Padding(14);
+            card.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(accent, 2))
+                    e.Graphics.DrawLine(p, 0, 0, card.Width, 0);
+            };
+
+            Label title = new Label();
+            title.AutoSize = false;
+            title.Location = new Point(14, 12);
+            title.Size = new Size(240, 22);
+            title.Text = titleText;
+            title.ForeColor = _muted;
+            title.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
+            card.Controls.Add(title);
+
+            Label value = new Label();
+            value.AutoSize = false;
+            value.Location = new Point(14, 38);
+            value.Size = new Size(250, 34);
+            value.Text = valueText;
+            value.ForeColor = _text;
+            value.Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold);
+            card.Controls.Add(value);
+            _dynamicLabels.Add(value);
+
+            Label detail = new Label();
+            detail.AutoSize = false;
+            detail.Location = new Point(15, 76);
+            detail.Size = new Size(250, 24);
+            detail.Text = detailText;
+            detail.ForeColor = _muted;
+            detail.Font = new Font("Segoe UI", 9F, FontStyle.Regular);
+            card.Controls.Add(detail);
+
+            return card;
+        }
+
+        private Control BuildWorkflow()
+        {
+            TableLayoutPanel wrap = new TableLayoutPanel();
+            wrap.Dock = DockStyle.Fill;
+            wrap.BackColor = _panel;
+            wrap.Margin = new Padding(0, 4, 0, 0);
+            wrap.Padding = new Padding(18);
+            wrap.ColumnCount = 2;
+            wrap.RowCount = 1;
+            wrap.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+            wrap.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+
+            Label workflow = new Label();
+            workflow.Dock = DockStyle.Fill;
+            workflow.ForeColor = _text;
+            workflow.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular);
+            workflow.Text = "Recommended workflow\r\n\r\n1. Run Defender status and a Quick Scan.\r\n2. Review DNS settings and scan the local network.\r\n3. Run System Health before changing Windows settings.\r\n4. Export logs after the work is complete.\r\n\r\nThis layout keeps the customer-facing path simple while the advanced tabs remain available for deeper troubleshooting.";
+            wrap.Controls.Add(workflow, 0, 0);
+
+            Label notes = new Label();
+            notes.Dock = DockStyle.Fill;
+            notes.ForeColor = _muted;
+            notes.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
+            notes.Text = "Professional polish added in v4.3.0\r\n\r\n• Dashboard-first layout\r\n• Cleaner product wording\r\n• No duplicate Hosts File tab\r\n• Version number aligned with README\r\n• Better customer handoff language\r\n• Clear admin-mode indicator";
+            wrap.Controls.Add(notes, 1, 0);
+            return wrap;
+        }
+
+        private void RefreshCards()
+        {
+            if (_dynamicLabels.Count < 8) return;
+
+            _dynamicLabels[0].Text = IsAdministrator() ? "Admin" : "Standard";
+            _dynamicLabels[1].Text = GetPrimaryIPv4();
+            _dynamicLabels[2].Text = GetSystemDriveFree();
+            _dynamicLabels[3].Text = GetLogSummary();
+            _dynamicLabels[4].Text = IsPendingReboot() ? "Yes" : "No";
+            _dynamicLabels[5].Text = "Review";
+            _dynamicLabels[6].Text = "Harden";
+            _dynamicLabels[7].Text = DateTime.Now.ToString("h:mm tt");
+        }
+
+        private void OpenLogsFolder()
+        {
+            try
+            {
+                Directory.CreateDirectory(_logsDir);
+                Process.Start("explorer.exe", _logsDir);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ParentForm, ex.Message, "Open Logs", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private static string GetPrimaryIPv4()
+        {
+            try
+            {
+                foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                    foreach (UnicastIPAddressInformation uni in nic.GetIPProperties().UnicastAddresses)
+                    {
+                        if (uni.Address.AddressFamily == AddressFamily.InterNetwork)
+                            return uni.Address.ToString();
+                    }
+                }
+            }
+            catch { }
+            return "Not found";
+        }
+
+        private static string GetSystemDriveFree()
+        {
+            try
+            {
+                DriveInfo d = new DriveInfo(Path.GetPathRoot(Environment.SystemDirectory));
+                double free = d.AvailableFreeSpace / 1024.0 / 1024.0 / 1024.0;
+                return free.ToString("0.0") + " GB";
+            }
+            catch { return "Unknown"; }
+        }
+
+        private string GetLogSummary()
+        {
+            try
+            {
+                if (!Directory.Exists(_logsDir)) return "0 files";
+                int count = Directory.GetFiles(_logsDir).Length;
+                return count.ToString() + (count == 1 ? " file" : " files");
+            }
+            catch { return "Unknown"; }
+        }
+
+        private static bool IsPendingReboot()
+        {
+            try
+            {
+                string[] keys = new string[]
+                {
+                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending",
+                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired",
+                    @"SYSTEM\CurrentControlSet\Control\Session Manager"
+                };
+                if (Registry.LocalMachine.OpenSubKey(keys[0]) != null) return true;
+                if (Registry.LocalMachine.OpenSubKey(keys[1]) != null) return true;
+                using (RegistryKey k = Registry.LocalMachine.OpenSubKey(keys[2]))
+                {
+                    if (k != null && k.GetValue("PendingFileRenameOperations") != null) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static bool IsAdministrator()
+        {
+            try { return new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator); }
+            catch { return false; }
         }
     }
 

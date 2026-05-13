@@ -9,7 +9,7 @@ set "INSTALLDIR=%LOCALAPPDATA%\Frontline Tech Consulting\Frontline Suite"
 
 echo ============================================================
 echo   Frontline Suite Installer
-echo   Security Scanner  +  Network Shield
+echo   Local Security  +  Network  +  System Maintenance
 echo   Frontline Tech Consulting, LLC
 echo ============================================================
 echo.
@@ -71,7 +71,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
     "$lnk.WorkingDirectory = Join-Path $env:LOCALAPPDATA 'Frontline Tech Consulting\Frontline Suite';" ^
     "$ico = Join-Path $env:LOCALAPPDATA 'Frontline Tech Consulting\Frontline Suite\assets\frontline_logo.ico';" ^
     "if (Test-Path $ico) { $lnk.IconLocation = $ico };" ^
-    "$lnk.Description = 'Frontline Suite - Security Scanner and Network Shield';" ^
+    "$lnk.Description = 'Frontline Suite - Local Security, Network, and System Maintenance Toolkit';" ^
     "$lnk.Save()"
 
 if errorlevel 1 (
