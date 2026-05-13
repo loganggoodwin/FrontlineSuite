@@ -13,6 +13,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace FrontlineSuite
 {
@@ -92,7 +93,7 @@ namespace FrontlineSuite
     internal sealed class MainForm : Form
     {
         private const string AppName    = "Frontline Suite";
-        private const string AppVersion = "1.0.0";
+        private const string AppVersion = "4.0.0";
 
         private readonly Color _bg     = Color.FromArgb(10, 12, 16);
         private readonly Color _panel  = Color.FromArgb(17, 21, 32);
@@ -152,13 +153,13 @@ namespace FrontlineSuite
             _tabs = new TabControl();
             _tabs.Dock = DockStyle.Fill;
             _tabs.DrawMode = TabDrawMode.OwnerDrawFixed;
-            _tabs.ItemSize = new Size(220, 36);
+            _tabs.ItemSize = new Size(175, 36);
             _tabs.SizeMode = TabSizeMode.Fixed;
             _tabs.Appearance = TabAppearance.Normal;
             _tabs.BackColor = _bg;
-            _tabs.Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold);
+            _tabs.Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold);
             _tabs.DrawItem += DrawTab;
-            _tabs.Padding = new Point(12, 6);
+            _tabs.Padding = new Point(10, 6);
 
             TabPage scannerPage = new TabPage("  Security Scanner");
             scannerPage.BackColor = _bg;
@@ -170,8 +171,53 @@ namespace FrontlineSuite
             shieldPage.Padding = new Padding(0);
             shieldPage.Controls.Add(new NetworkPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
 
+            TabPage healthPage = new TabPage("  System Health");
+            healthPage.BackColor = _bg;
+            healthPage.Padding = new Padding(0);
+            healthPage.Controls.Add(new SystemHealthPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
+
+            TabPage startupPage = new TabPage("  Startup Manager");
+            startupPage.BackColor = _bg;
+            startupPage.Padding = new Padding(0);
+            startupPage.Controls.Add(new StartupPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
+
+            TabPage updatePage = new TabPage("  Windows Update");
+            updatePage.BackColor = _bg;
+            updatePage.Padding = new Padding(0);
+            updatePage.Controls.Add(new WindowsUpdatePanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
+
+            TabPage eventLogPage = new TabPage("  Event Log");
+            eventLogPage.BackColor = _bg;
+            eventLogPage.Padding = new Padding(0);
+            eventLogPage.Controls.Add(new EventLogPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
+
+            TabPage cleanerPage = new TabPage("  Junk Cleaner");
+            cleanerPage.BackColor = _bg;
+            cleanerPage.Padding = new Padding(0);
+            cleanerPage.Controls.Add(new JunkCleanerPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
+
+            TabPage hostsPage = new TabPage("  Hosts File");
+            hostsPage.BackColor = _bg;
+            hostsPage.Padding = new Padding(0);
+            hostsPage.Controls.Add(new HostsFilePanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
+
+            TabPage firewallPage = new TabPage("  Firewall");
+            firewallPage.BackColor = _bg;
+            firewallPage.Padding = new Padding(0);
+            firewallPage.Controls.Add(new FirewallPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
+
             _tabs.TabPages.Add(scannerPage);
             _tabs.TabPages.Add(shieldPage);
+            _tabs.TabPages.Add(healthPage);
+            _tabs.TabPages.Add(startupPage);
+            _tabs.TabPages.Add(updatePage);
+            _tabs.TabPages.Add(eventLogPage);
+            _tabs.TabPages.Add(cleanerPage);
+            _tabs.TabPages.Add(hostsPage);
+            _tabs.TabPages.Add(firewallPage);
+            _tabs.TabPages.Add(hostsPage);
+
+            _tabs.ItemSize = new Size(140, 36);
 
             root.Controls.Add(_tabs, 0, 1);
             root.Controls.Add(BuildFooter(), 0, 2);
@@ -221,7 +267,7 @@ namespace FrontlineSuite
             Label sub = new Label();
             sub.AutoSize = true;
             sub.Location = new Point(96, 55);
-            sub.Text = "Security Scanner  •  Network Shield  •  DNS Protection  •  Local Logs";
+            sub.Text = "Security Scanner  •  Network Shield  •  System Health  •  Startup  •  Windows Update  •  Event Log  •  Junk Cleaner  •  Hosts File  •  Firewall";
             sub.ForeColor = _muted;
             sub.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
             header.Controls.Add(sub);
@@ -1234,6 +1280,1967 @@ namespace FrontlineSuite
         private static IPAddress UInt32ToAddress(uint v) { byte[] b = BitConverter.GetBytes(v); if (BitConverter.IsLittleEndian) Array.Reverse(b); return new IPAddress(b); }
         private static int MaskToPrefix(uint mask) { int p = 0; for (int i = 31; i >= 0; i--) { if ((mask & (1u << i)) != 0) p++; else break; } return p; }
         private static uint PrefixToMask(int prefix) { if (prefix <= 0) return 0; if (prefix >= 32) return UInt32.MaxValue; return UInt32.MaxValue << (32 - prefix); }
+        private static string Now() { return DateTime.Now.ToString("HH:mm:ss"); }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  System Health tab
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal sealed class SystemHealthPanel : UserControl
+    {
+        private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
+        private readonly Color _green = Color.FromArgb(107, 218, 143);
+        private readonly string _logsDir;
+
+        private TextBox _outputBox;
+        private Label _statusLabel;
+        private ProgressBar _progressBar;
+        private readonly List<Button> _buttons = new List<Button>();
+        private bool _isRunning;
+
+        public SystemHealthPanel(string logsDir, Color bg, Color panel, Color panel2,
+            Color orange, Color blue, Color text, Color muted)
+        {
+            _logsDir = logsDir;
+            _bg = bg; _panel = panel; _panel2 = panel2;
+            _orange = orange; _blue = blue; _text = text; _muted = muted;
+            Dock = DockStyle.Fill;
+            BackColor = _bg;
+            Build();
+            AppendOutput("System Health ready. Click 'Full Health Snapshot' for a complete overview.");
+        }
+
+        private void Build()
+        {
+            TableLayoutPanel root = new TableLayoutPanel();
+            root.Dock = DockStyle.Fill;
+            root.BackColor = _bg;
+            root.RowCount = 3;
+            root.ColumnCount = 1;
+            root.Padding = new Padding(0, 8, 0, 0);
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 136));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            Controls.Add(root);
+            root.Controls.Add(BuildButtonGrid(), 0, 0);
+            root.Controls.Add(BuildStatusPanel(), 0, 1);
+            root.Controls.Add(BuildOutputBox(), 0, 2);
+        }
+
+        private Control BuildButtonGrid()
+        {
+            TableLayoutPanel grid = new TableLayoutPanel();
+            grid.Dock = DockStyle.Fill;
+            grid.BackColor = _panel2;
+            grid.Padding = new Padding(10);
+            grid.ColumnCount = 4;
+            grid.RowCount = 2;
+            for (int c = 0; c < 4; c++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            for (int r = 0; r < 2; r++) grid.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+
+            AddBtn(grid, 0, 0, "Full Health Snapshot", "Run all health checks and save a log",   () => RunFullSnapshot());
+            AddBtn(grid, 1, 0, "Disk Space",           "Show free/used space on all drives",      () => RunDiskSpace());
+            AddBtn(grid, 2, 0, "RAM & CPU",            "Show memory usage and CPU info",           () => RunRamCpu());
+            AddBtn(grid, 3, 0, "System Info",          "OS version, uptime, computer name",        () => RunSystemInfo());
+
+            AddBtn(grid, 0, 1, "Pending Reboot?",      "Check if Windows is waiting for a reboot",() => RunPendingReboot());
+            AddBtn(grid, 1, 1, "Battery Status",       "Show battery health (laptops)",            () => RunBattery());
+            AddBtn(grid, 2, 1, "Event Log Errors",     "Show last 20 critical/error events",       () => RunEventLogErrors());
+            AddBtn(grid, 3, 1, "Logs Folder",          "Open saved health logs",                   () => OpenLogsFolder());
+
+            return grid;
+        }
+
+        private void AddBtn(TableLayoutPanel grid, int col, int row, string text, string tip, Action action)
+        {
+            Button btn = new Button { Text = text, Dock = DockStyle.Fill, Margin = new Padding(6), BackColor = _panel, ForeColor = _text, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold), Cursor = Cursors.Hand };
+            btn.FlatAppearance.BorderColor = _orange;
+            btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 39, 56);
+            btn.Click += delegate { action(); };
+            new ToolTip { InitialDelay = 250, ReshowDelay = 100 }.SetToolTip(btn, tip);
+            _buttons.Add(btn);
+            grid.Controls.Add(btn, col, row);
+        }
+
+        private Control BuildStatusPanel()
+        {
+            TableLayoutPanel p = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, ColumnCount = 2, Padding = new Padding(0, 8, 0, 4) };
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68));
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+            _statusLabel = new Label { Text = "Ready", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            p.Controls.Add(_statusLabel, 0, 0);
+            _progressBar = new ProgressBar { Dock = DockStyle.Fill, Style = ProgressBarStyle.Blocks, Minimum = 0, Maximum = 100, Value = 0 };
+            p.Controls.Add(_progressBar, 1, 0);
+            return p;
+        }
+
+        private Control BuildOutputBox()
+        {
+            _outputBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _green, Font = new Font("Consolas", 10F), BorderStyle = BorderStyle.FixedSingle };
+            return _outputBox;
+        }
+
+        // ── checks ────────────────────────────────────────────────────────────
+
+        private void RunFullSnapshot()
+        {
+            if (_isRunning) return;
+            RunAsync("Full Health Snapshot", delegate(StringBuilder sb)
+            {
+                CollectSystemInfo(sb);
+                sb.AppendLine();
+                CollectDiskSpace(sb);
+                sb.AppendLine();
+                CollectRamCpu(sb);
+                sb.AppendLine();
+                CollectPendingReboot(sb);
+                sb.AppendLine();
+                CollectBattery(sb);
+                sb.AppendLine();
+                CollectEventLogErrors(sb);
+            });
+        }
+
+        private void RunDiskSpace()        { RunAsync("Disk Space",        CollectDiskSpace); }
+        private void RunRamCpu()           { RunAsync("RAM & CPU",         CollectRamCpu); }
+        private void RunSystemInfo()       { RunAsync("System Info",       CollectSystemInfo); }
+        private void RunPendingReboot()    { RunAsync("Pending Reboot",    CollectPendingReboot); }
+        private void RunBattery()          { RunAsync("Battery Status",    CollectBattery); }
+        private void RunEventLogErrors()   { RunAsync("Event Log Errors",  CollectEventLogErrors); }
+
+        private void RunAsync(string taskName, Action<StringBuilder> work)
+        {
+            if (_isRunning) return;
+            _isRunning = true; SetButtonsEnabled(false); SetStatus("Running: " + taskName, true);
+            Thread t = new Thread(delegate()
+            {
+                string logFile = Path.Combine(_logsDir, "health_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + SafeName(taskName) + ".log");
+                try
+                {
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendLine("============================================================");
+                    sb.AppendLine("Frontline Suite – System Health");
+                    sb.AppendLine("Task: " + taskName);
+                    sb.AppendLine("Generated: " + DateTime.Now.ToString("s"));
+                    sb.AppendLine("============================================================");
+                    sb.AppendLine();
+                    work(sb);
+                    string result = sb.ToString();
+                    File.WriteAllText(logFile, result, Encoding.UTF8);
+                    AppendOutput(result);
+                    AppendOutput("[" + Now() + "] Log saved: " + logFile);
+                }
+                catch (Exception ex) { AppendOutput("ERROR: " + ex.Message); }
+                finally { BeginInvoke(new MethodInvoker(delegate() { _isRunning = false; SetButtonsEnabled(true); SetStatus("Ready", false); })); }
+            });
+            t.IsBackground = true; t.Start();
+        }
+
+        private void CollectSystemInfo(StringBuilder sb)
+        {
+            sb.AppendLine("── System Info ─────────────────────────────────────────────");
+            try
+            {
+                string ps = "Get-ComputerInfo | Select-Object CsName,WindowsProductName,WindowsVersion,OsArchitecture,OsLastBootUpTime | Format-List";
+                string result = RunPs(ps);
+                sb.AppendLine(result);
+
+                // Uptime via WMI (avoids TickCount64 which requires .NET 5+)
+                try
+                {
+                    string psUp = "(Get-Date) - (gcim Win32_OperatingSystem).LastBootUpTime | Select-Object -ExpandProperty ToString";
+                    string upResult = RunPs("$b=(gcim Win32_OperatingSystem).LastBootUpTime; $u=(Get-Date)-$b; '{0}d {1}h {2}m' -f [int]$u.TotalDays,$u.Hours,$u.Minutes").Trim();
+                    sb.AppendLine("Uptime:  " + upResult);
+                }
+                catch { }
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex.Message); }
+        }
+
+        private void CollectDiskSpace(StringBuilder sb)
+        {
+            sb.AppendLine("── Disk Space ──────────────────────────────────────────────");
+            try
+            {
+                foreach (DriveInfo drive in DriveInfo.GetDrives())
+                {
+                    if (!drive.IsReady) continue;
+                    double total = drive.TotalSize / 1073741824.0;
+                    double free  = drive.AvailableFreeSpace / 1073741824.0;
+                    double used  = total - free;
+                    double pct   = total > 0 ? (used / total) * 100.0 : 0;
+                    string warn  = pct > 90 ? " *** LOW DISK ***" : pct > 75 ? " (getting full)" : "";
+                    sb.AppendLine(String.Format("{0,-6} {1,-30}  Total: {2,7:F1} GB  Used: {3,7:F1} GB  Free: {4,7:F1} GB  ({5:F0}%){6}",
+                        drive.Name, drive.VolumeLabel, total, used, free, pct, warn));
+                }
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex.Message); }
+        }
+
+        private void CollectRamCpu(StringBuilder sb)
+        {
+            sb.AppendLine("── RAM & CPU ────────────────────────────────────────────────");
+            try
+            {
+                string ps = "$os = Get-CimInstance Win32_OperatingSystem; $cs = Get-CimInstance Win32_ComputerSystem; $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1; " +
+                            "[PSCustomObject]@{ 'CPU Name' = $cpu.Name; 'CPU Cores' = $cpu.NumberOfCores; 'CPU LogicalProc' = $cpu.NumberOfLogicalProcessors; " +
+                            "'RAM Total GB' = [math]::Round($cs.TotalPhysicalMemory/1GB,2); " +
+                            "'RAM Available GB' = [math]::Round($os.FreePhysicalMemory/1MB,2); " +
+                            "'RAM Used %' = [math]::Round((($cs.TotalPhysicalMemory - ($os.FreePhysicalMemory*1KB))/$cs.TotalPhysicalMemory)*100,1) } | Format-List";
+                sb.AppendLine(RunPs(ps));
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex.Message); }
+        }
+
+        private void CollectPendingReboot(StringBuilder sb)
+        {
+            sb.AppendLine("── Pending Reboot Check ─────────────────────────────────────");
+            try
+            {
+                string ps =
+                    "$reasons = @();" +
+                    "if (Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending') { $reasons += 'Component-Based Servicing reboot pending' };" +
+                    "if (Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired') { $reasons += 'Windows Update reboot required' };" +
+                    "if (Test-Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager') { $v = (Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager' -Name PendingFileRenameOperations -ErrorAction SilentlyContinue).PendingFileRenameOperations; if ($v) { $reasons += 'Pending file rename operations exist' } };" +
+                    "if ($reasons.Count -eq 0) { 'No pending reboot detected.' } else { 'REBOOT PENDING: ' + ($reasons -join '; ') }";
+                sb.AppendLine(RunPs(ps).Trim());
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex.Message); }
+        }
+
+        private void CollectBattery(StringBuilder sb)
+        {
+            sb.AppendLine("── Battery Status ───────────────────────────────────────────");
+            try
+            {
+                string ps = "$b = Get-CimInstance Win32_Battery; if ($b) { $b | Select-Object Name,EstimatedChargeRemaining,BatteryStatus,DesignCapacity,FullChargeCapacity | Format-List } else { 'No battery found (desktop or battery info unavailable).' }";
+                sb.AppendLine(RunPs(ps).Trim());
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex.Message); }
+        }
+
+        private void CollectEventLogErrors(StringBuilder sb)
+        {
+            sb.AppendLine("── Event Log – Last 20 Critical/Error Events ────────────────");
+            try
+            {
+                string ps = "Get-EventLog -LogName System -EntryType Error,Warning -Newest 20 | Select-Object TimeGenerated,EntryType,Source,Message | Format-Table -AutoSize -Wrap";
+                sb.AppendLine(RunPs(ps).Trim());
+            }
+            catch (Exception ex) { sb.AppendLine("ERROR: " + ex.Message); }
+        }
+
+        private string RunPs(string command)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -ExecutionPolicy Bypass -Command " + Q(command),
+                    CreateNoWindow = true, UseShellExecute = false,
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.UTF8
+                };
+                using (Process p = Process.Start(psi))
+                {
+                    string output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit();
+                    return output;
+                }
+            }
+            catch (Exception ex) { return "ERROR: " + ex.Message; }
+        }
+
+        private void OpenLogsFolder() { Process.Start("explorer.exe", Q(_logsDir)); }
+
+        private void AppendOutput(string text)
+        {
+            if (_outputBox == null) return;
+            if (_outputBox.InvokeRequired) { _outputBox.BeginInvoke(new Action<string>(AppendOutput), text); return; }
+            _outputBox.AppendText(text + Environment.NewLine);
+            _outputBox.SelectionStart = _outputBox.TextLength;
+            _outputBox.ScrollToCaret();
+        }
+        private void SetButtonsEnabled(bool enabled) { if (InvokeRequired) { BeginInvoke(new Action<bool>(SetButtonsEnabled), enabled); return; } foreach (Button b in _buttons) b.Enabled = enabled; }
+        private void SetStatus(string text, bool running) { if (InvokeRequired) { BeginInvoke(new Action<string, bool>(SetStatus), text, running); return; } _statusLabel.Text = text; if (running) { _progressBar.Style = ProgressBarStyle.Marquee; _progressBar.MarqueeAnimationSpeed = 30; } else { _progressBar.MarqueeAnimationSpeed = 0; _progressBar.Style = ProgressBarStyle.Blocks; _progressBar.Value = 0; } }
+        private static string Q(string v) { if (v == null) return "\"\""; return "\"" + v.Replace("\"", "\\\"") + "\""; }
+        private static string Now() { return DateTime.Now.ToString("HH:mm:ss"); }
+        private static string SafeName(string v) { StringBuilder sb = new StringBuilder(); foreach (char c in v) sb.Append(Char.IsLetterOrDigit(c) ? c : '_'); return sb.ToString().Trim('_'); }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Startup Manager tab
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal sealed class StartupPanel : UserControl
+    {
+        private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
+        private readonly Color _green = Color.FromArgb(107, 218, 143);
+        private readonly string _logsDir;
+
+        private ListView _listView;
+        private TextBox _outputBox;
+        private Label _statusLabel;
+        private ProgressBar _progressBar;
+        private readonly List<Button> _buttons = new List<Button>();
+        private bool _isRunning;
+
+        // Holds reg path + value name for disable/enable actions
+        private class StartupEntry
+        {
+            public string Name;
+            public string Command;
+            public string Location;   // display
+            public string RegHive;    // HKCU or HKLM
+            public string RegPath;
+            public string RegValue;
+            public bool   Enabled;
+        }
+        private List<StartupEntry> _entries = new List<StartupEntry>();
+
+        public StartupPanel(string logsDir, Color bg, Color panel, Color panel2,
+            Color orange, Color blue, Color text, Color muted)
+        {
+            _logsDir = logsDir;
+            _bg = bg; _panel = panel; _panel2 = panel2;
+            _orange = orange; _blue = blue; _text = text; _muted = muted;
+            Dock = DockStyle.Fill;
+            BackColor = _bg;
+            Build();
+            AppendOutput("Startup Manager ready. Click 'Refresh List' to load startup entries.");
+        }
+
+        private void Build()
+        {
+            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, RowCount = 4, ColumnCount = 1, Padding = new Padding(0, 8, 0, 0) };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 52));
+            Controls.Add(root);
+            root.Controls.Add(BuildButtonGrid(), 0, 0);
+            root.Controls.Add(BuildListView(), 0, 1);
+            root.Controls.Add(BuildStatusPanel(), 0, 2);
+            root.Controls.Add(BuildOutputBox(), 0, 3);
+        }
+
+        private Control BuildButtonGrid()
+        {
+            TableLayoutPanel grid = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _panel2, Padding = new Padding(10), ColumnCount = 4, RowCount = 1 };
+            for (int c = 0; c < 4; c++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            AddBtn(grid, 0, 0, "Refresh List",       "Load all current startup entries",          () => LoadStartupEntries());
+            AddBtn(grid, 1, 0, "Disable Selected",   "Disable the selected startup entry",        () => ToggleSelected(false));
+            AddBtn(grid, 2, 0, "Enable Selected",    "Re-enable the selected startup entry",      () => ToggleSelected(true));
+            AddBtn(grid, 3, 0, "Export to Log",      "Save startup list to a text log file",      () => ExportList());
+
+            return grid;
+        }
+
+        private void AddBtn(TableLayoutPanel grid, int col, int row, string text, string tip, Action action)
+        {
+            Button btn = new Button { Text = text, Dock = DockStyle.Fill, Margin = new Padding(6), BackColor = _panel, ForeColor = _text, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold), Cursor = Cursors.Hand };
+            btn.FlatAppearance.BorderColor = _orange; btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 39, 56);
+            btn.Click += delegate { action(); };
+            new ToolTip { InitialDelay = 250, ReshowDelay = 100 }.SetToolTip(btn, tip);
+            _buttons.Add(btn); grid.Controls.Add(btn, col, row);
+        }
+
+        private Control BuildListView()
+        {
+            _listView = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, GridLines = true, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _text, Font = new Font("Consolas", 9F), BorderStyle = BorderStyle.FixedSingle, MultiSelect = false };
+            _listView.Columns.Add("Status",   70);
+            _listView.Columns.Add("Name",    220);
+            _listView.Columns.Add("Command", 500);
+            _listView.Columns.Add("Location",180);
+            return _listView;
+        }
+
+        private Control BuildStatusPanel()
+        {
+            TableLayoutPanel p = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, ColumnCount = 2, Padding = new Padding(0, 8, 0, 4) };
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68));
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+            _statusLabel = new Label { Text = "Ready", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            p.Controls.Add(_statusLabel, 0, 0);
+            _progressBar = new ProgressBar { Dock = DockStyle.Fill, Style = ProgressBarStyle.Blocks, Minimum = 0, Maximum = 100, Value = 0 };
+            p.Controls.Add(_progressBar, 1, 0);
+            return p;
+        }
+
+        private Control BuildOutputBox()
+        {
+            _outputBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _green, Font = new Font("Consolas", 10F), BorderStyle = BorderStyle.FixedSingle };
+            return _outputBox;
+        }
+
+        // ── logic ─────────────────────────────────────────────────────────────
+
+        private void LoadStartupEntries()
+        {
+            if (_isRunning) return;
+            _isRunning = true; SetButtonsEnabled(false); SetStatus("Loading startup entries...", true);
+            Thread t = new Thread(delegate()
+            {
+                try
+                {
+                    List<StartupEntry> entries = new List<StartupEntry>();
+                    ReadRunKey(entries, Registry.CurrentUser,
+                        @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", "HKCU Run", true);
+                    ReadRunKey(entries, Registry.LocalMachine,
+                        @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", "HKLM Run", true);
+                    ReadRunKey(entries, Registry.CurrentUser,
+                        @"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce", "HKCU RunOnce", true);
+                    ReadDisabledKey(entries, Registry.CurrentUser,
+                        @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run", "HKCU Run");
+                    ReadDisabledKey(entries, Registry.LocalMachine,
+                        @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run", "HKLM Run");
+
+                    _entries = entries;
+                    BeginInvoke(new MethodInvoker(delegate()
+                    {
+                        _listView.Items.Clear();
+                        foreach (StartupEntry e in entries)
+                        {
+                            ListViewItem item = new ListViewItem(e.Enabled ? "Enabled" : "DISABLED");
+                            item.ForeColor = e.Enabled ? _green : Color.FromArgb(220, 80, 60);
+                            item.SubItems.Add(e.Name);
+                            item.SubItems.Add(e.Command);
+                            item.SubItems.Add(e.Location);
+                            item.Tag = e;
+                            _listView.Items.Add(item);
+                        }
+                        AppendOutput("[" + Now() + "] Loaded " + entries.Count + " startup entry/entries.");
+                    }));
+                }
+                catch (Exception ex) { AppendOutput("ERROR: " + ex.Message); }
+                finally { BeginInvoke(new MethodInvoker(delegate() { _isRunning = false; SetButtonsEnabled(true); SetStatus("Ready", false); })); }
+            });
+            t.IsBackground = true; t.Start();
+        }
+
+        private void ReadRunKey(List<StartupEntry> entries, RegistryKey hive, string path, string location, bool enabled)
+        {
+            try
+            {
+                using (RegistryKey key = hive.OpenSubKey(path))
+                {
+                    if (key == null) return;
+                    foreach (string valueName in key.GetValueNames())
+                    {
+                        entries.Add(new StartupEntry
+                        {
+                            Name = valueName,
+                            Command = key.GetValue(valueName, "").ToString(),
+                            Location = location,
+                            RegHive = hive == Registry.CurrentUser ? "HKCU" : "HKLM",
+                            RegPath = path,
+                            RegValue = valueName,
+                            Enabled = enabled
+                        });
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // Reads StartupApproved keys to find disabled entries (value data starting with 03)
+        private void ReadDisabledKey(List<StartupEntry> entries, RegistryKey hive, string path, string locationFilter)
+        {
+            try
+            {
+                using (RegistryKey key = hive.OpenSubKey(path))
+                {
+                    if (key == null) return;
+                    foreach (string valueName in key.GetValueNames())
+                    {
+                        byte[] data = key.GetValue(valueName) as byte[];
+                        if (data == null || data.Length == 0) continue;
+                        bool disabled = (data[0] == 3);
+                        if (!disabled) continue;
+                        // Mark matching entry in the list as disabled
+                        foreach (StartupEntry e in entries)
+                        {
+                            if (String.Equals(e.Name, valueName, StringComparison.OrdinalIgnoreCase) && e.Location == locationFilter)
+                                e.Enabled = false;
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void ToggleSelected(bool enable)
+        {
+            if (_listView.SelectedItems.Count == 0) { MessageBox.Show(ParentForm, "Select an entry first.", "Startup Manager", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            StartupEntry entry = _listView.SelectedItems[0].Tag as StartupEntry;
+            if (entry == null) return;
+
+            string verb = enable ? "enable" : "disable";
+            if (MessageBox.Show(ParentForm, "Are you sure you want to " + verb + " startup entry:\r\n\r\n" + entry.Name + "\r\n\r\nChanges take effect on next login.", "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+            try
+            {
+                // Write to StartupApproved key
+                string hiveName = entry.RegHive == "HKCU" ? "HKCU" : "HKLM";
+                string approvedPath = (entry.RegHive == "HKCU" ? "" : "") +
+                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+                RegistryKey hive = entry.RegHive == "HKCU"
+                    ? Registry.CurrentUser
+                    : Registry.LocalMachine;
+
+                using (RegistryKey key = hive.CreateSubKey(approvedPath))
+                {
+                    if (key == null) { AppendOutput("ERROR: Could not open StartupApproved registry key."); return; }
+                    byte[] data = new byte[12];
+                    data[0] = enable ? (byte)2 : (byte)3;
+                    key.SetValue(entry.Name, data, RegistryValueKind.Binary);
+                }
+
+                entry.Enabled = enable;
+                AppendOutput("[" + Now() + "] " + (enable ? "Enabled" : "Disabled") + " startup entry: " + entry.Name);
+                LoadStartupEntries();
+            }
+            catch (Exception ex)
+            {
+                AppendOutput("ERROR: " + ex.Message + "\r\nTry running as Administrator.");
+            }
+        }
+
+        private void ExportList()
+        {
+            if (_entries.Count == 0) { MessageBox.Show(ParentForm, "Load the startup list first.", "Startup Manager", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            string logFile = Path.Combine(_logsDir, "startup_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log");
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("============================================================");
+            sb.AppendLine("Frontline Suite – Startup Manager Export");
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("s"));
+            sb.AppendLine("============================================================");
+            sb.AppendLine();
+            foreach (StartupEntry e in _entries)
+            {
+                sb.AppendLine(String.Format("{0,-10} {1,-40} {2}", e.Enabled ? "Enabled" : "DISABLED", e.Name, e.Command));
+                sb.AppendLine("           Location: " + e.Location);
+                sb.AppendLine();
+            }
+            File.WriteAllText(logFile, sb.ToString(), Encoding.UTF8);
+            AppendOutput("[" + Now() + "] Exported: " + logFile);
+            MessageBox.Show(ParentForm, "Saved:\r\n" + logFile, "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void AppendOutput(string text) { if (_outputBox == null) return; if (_outputBox.InvokeRequired) { _outputBox.BeginInvoke(new Action<string>(AppendOutput), text); return; } _outputBox.AppendText(text + Environment.NewLine); _outputBox.SelectionStart = _outputBox.TextLength; _outputBox.ScrollToCaret(); }
+        private void SetButtonsEnabled(bool enabled) { if (InvokeRequired) { BeginInvoke(new Action<bool>(SetButtonsEnabled), enabled); return; } foreach (Button b in _buttons) b.Enabled = enabled; }
+        private void SetStatus(string text, bool running) { if (InvokeRequired) { BeginInvoke(new Action<string, bool>(SetStatus), text, running); return; } _statusLabel.Text = text; if (running) { _progressBar.Style = ProgressBarStyle.Marquee; _progressBar.MarqueeAnimationSpeed = 30; } else { _progressBar.MarqueeAnimationSpeed = 0; _progressBar.Style = ProgressBarStyle.Blocks; _progressBar.Value = 0; } }
+        private static string Now() { return DateTime.Now.ToString("HH:mm:ss"); }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Windows Update tab
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal sealed class WindowsUpdatePanel : UserControl
+    {
+        private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
+        private readonly Color _green = Color.FromArgb(107, 218, 143);
+        private readonly string _logsDir;
+
+        private TextBox _outputBox;
+        private Label _statusLabel;
+        private ProgressBar _progressBar;
+        private readonly List<Button> _buttons = new List<Button>();
+        private bool _isRunning;
+
+        public WindowsUpdatePanel(string logsDir, Color bg, Color panel, Color panel2,
+            Color orange, Color blue, Color text, Color muted)
+        {
+            _logsDir = logsDir;
+            _bg = bg; _panel = panel; _panel2 = panel2;
+            _orange = orange; _blue = blue; _text = text; _muted = muted;
+            Dock = DockStyle.Fill;
+            BackColor = _bg;
+            Build();
+            AppendOutput("Windows Update tab ready.");
+            AppendOutput("Note: Installing updates requires the PSWindowsUpdate module or Windows Update Agent.");
+            AppendOutput("All actions here use built-in Windows tools — no third-party software.");
+        }
+
+        private void Build()
+        {
+            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, RowCount = 3, ColumnCount = 1, Padding = new Padding(0, 8, 0, 0) };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 136));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            Controls.Add(root);
+            root.Controls.Add(BuildButtonGrid(), 0, 0);
+            root.Controls.Add(BuildStatusPanel(), 0, 1);
+            root.Controls.Add(BuildOutputBox(), 0, 2);
+        }
+
+        private Control BuildButtonGrid()
+        {
+            TableLayoutPanel grid = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _panel2, Padding = new Padding(10), ColumnCount = 4, RowCount = 2 };
+            for (int c = 0; c < 4; c++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            for (int r = 0; r < 2; r++) grid.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+
+            AddBtn(grid, 0, 0, "Update History",      "Show recently installed Windows updates",          () => RunHistory());
+            AddBtn(grid, 1, 0, "Last Update Date",    "Show when Windows was last successfully updated",  () => RunLastUpdateDate());
+            AddBtn(grid, 2, 0, "Pending Reboot?",     "Check if a Windows Update reboot is pending",      () => RunPendingReboot());
+            AddBtn(grid, 3, 0, "Open Windows Update", "Open Windows Update in Settings",                  () => OpenWindowsUpdate());
+
+            AddBtn(grid, 0, 1, "Reset WU Agent",      "Reset Windows Update components (advanced)",       () => RunResetWuAgent());
+            AddBtn(grid, 1, 1, "Clear WU Cache",      "Clear Windows Update download cache",              () => RunClearWuCache());
+            AddBtn(grid, 2, 1, "Update Services",     "Show status of Windows Update services",           () => RunUpdateServices());
+            AddBtn(grid, 3, 1, "Logs Folder",         "Open saved Windows Update logs",                   () => OpenLogsFolder());
+
+            return grid;
+        }
+
+        private void AddBtn(TableLayoutPanel grid, int col, int row, string text, string tip, Action action)
+        {
+            Button btn = new Button { Text = text, Dock = DockStyle.Fill, Margin = new Padding(6), BackColor = _panel, ForeColor = _text, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold), Cursor = Cursors.Hand };
+            btn.FlatAppearance.BorderColor = _orange; btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 39, 56);
+            btn.Click += delegate { action(); };
+            new ToolTip { InitialDelay = 250, ReshowDelay = 100 }.SetToolTip(btn, tip);
+            _buttons.Add(btn); grid.Controls.Add(btn, col, row);
+        }
+
+        private Control BuildStatusPanel()
+        {
+            TableLayoutPanel p = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, ColumnCount = 2, Padding = new Padding(0, 8, 0, 4) };
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68)); p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+            _statusLabel = new Label { Text = "Ready", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            p.Controls.Add(_statusLabel, 0, 0);
+            _progressBar = new ProgressBar { Dock = DockStyle.Fill, Style = ProgressBarStyle.Blocks, Minimum = 0, Maximum = 100, Value = 0 };
+            p.Controls.Add(_progressBar, 1, 0);
+            return p;
+        }
+
+        private Control BuildOutputBox()
+        {
+            _outputBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _green, Font = new Font("Consolas", 10F), BorderStyle = BorderStyle.FixedSingle };
+            return _outputBox;
+        }
+
+        // ── actions ───────────────────────────────────────────────────────────
+
+        private void RunHistory()
+        {
+            RunAsync("Update History", delegate(StringBuilder sb)
+            {
+                sb.AppendLine("── Recent Windows Update History (last 25) ──────────────────");
+                string ps = "Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 25 | Format-Table HotFixID,InstalledOn,Description,InstalledBy -AutoSize";
+                sb.AppendLine(RunPs(ps).Trim());
+            });
+        }
+
+        private void RunLastUpdateDate()
+        {
+            RunAsync("Last Update Date", delegate(StringBuilder sb)
+            {
+                sb.AppendLine("── Last Successful Windows Update ───────────────────────────");
+                string ps =
+                    "$wu = New-Object -ComObject Microsoft.Update.AutoUpdate;" +
+                    "$results = $wu.Results;" +
+                    "'Last Search:  ' + $results.LastSearchSuccessDate;" +
+                    "'Last Install: ' + $results.LastInstallationSuccessDate";
+                sb.AppendLine(RunPs(ps).Trim());
+                sb.AppendLine();
+                sb.AppendLine("── Most Recent HotFix Installed ─────────────────────────────");
+                string ps2 = "Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 1 | Format-List";
+                sb.AppendLine(RunPs(ps2).Trim());
+            });
+        }
+
+        private void RunPendingReboot()
+        {
+            RunAsync("Pending Reboot", delegate(StringBuilder sb)
+            {
+                sb.AppendLine("── Windows Update Reboot Check ──────────────────────────────");
+                string ps =
+                    "$reasons = @();" +
+                    "if (Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired') { $reasons += 'Windows Update reboot required' };" +
+                    "if (Test-Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending') { $reasons += 'Component Based Servicing reboot pending' };" +
+                    "if ($reasons.Count -eq 0) { 'No Windows Update pending reboot detected.' } else { 'REBOOT PENDING: ' + ($reasons -join '; ') }";
+                sb.AppendLine(RunPs(ps).Trim());
+            });
+        }
+
+        private void RunUpdateServices()
+        {
+            RunAsync("Update Services", delegate(StringBuilder sb)
+            {
+                sb.AppendLine("── Windows Update Related Services ──────────────────────────");
+                string ps = "Get-Service wuauserv,bits,cryptsvc,trustedinstaller -ErrorAction SilentlyContinue | Select-Object Name,DisplayName,Status,StartType | Format-Table -AutoSize";
+                sb.AppendLine(RunPs(ps).Trim());
+            });
+        }
+
+        private void RunResetWuAgent()
+        {
+            if (MessageBox.Show(ParentForm,
+                "This will stop Windows Update services, rename the SoftwareDistribution and catroot2 folders, and restart services.\r\n\r\nThis resets the Windows Update cache and can fix stuck updates.\r\n\r\nAdministrator permission required. Continue?",
+                "Reset Windows Update Agent", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+
+            RunAsync("Reset WU Agent", delegate(StringBuilder sb)
+            {
+                sb.AppendLine("── Resetting Windows Update Agent ───────────────────────────");
+                string[] cmds = {
+                    "net stop wuauserv",
+                    "net stop cryptsvc",
+                    "net stop bits",
+                    "net stop msiserver",
+                    "ren %SystemRoot%\\SoftwareDistribution SoftwareDistribution.old",
+                    "ren %SystemRoot%\\System32\\catroot2 catroot2.old",
+                    "net start wuauserv",
+                    "net start cryptsvc",
+                    "net start bits",
+                    "net start msiserver"
+                };
+                foreach (string cmd in cmds)
+                {
+                    sb.AppendLine("> " + cmd);
+                    sb.AppendLine(RunCmd("cmd.exe", "/c " + cmd).Trim());
+                }
+                sb.AppendLine();
+                sb.AppendLine("Windows Update Agent reset complete. Try checking for updates now.");
+            });
+        }
+
+        private void RunClearWuCache()
+        {
+            if (MessageBox.Show(ParentForm,
+                "This will stop the Windows Update service and delete the contents of the SoftwareDistribution\\Download folder.\r\n\r\nThis forces Windows Update to re-download updates but does not affect installed updates.\r\n\r\nContinue?",
+                "Clear Windows Update Cache", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+
+            RunAsync("Clear WU Cache", delegate(StringBuilder sb)
+            {
+                sb.AppendLine("── Clearing Windows Update Download Cache ────────────────────");
+                sb.AppendLine(RunCmd("cmd.exe", "/c net stop wuauserv").Trim());
+                string dlPath = Path.Combine(Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows", "SoftwareDistribution", "Download");
+                try
+                {
+                    if (Directory.Exists(dlPath))
+                    {
+                        foreach (string f in Directory.GetFiles(dlPath, "*", SearchOption.AllDirectories)) { try { File.Delete(f); } catch { } }
+                        foreach (string d in Directory.GetDirectories(dlPath)) { try { Directory.Delete(d, true); } catch { } }
+                        sb.AppendLine("Cleared: " + dlPath);
+                    }
+                    else sb.AppendLine("Download folder not found: " + dlPath);
+                }
+                catch (Exception ex) { sb.AppendLine("ERROR clearing cache: " + ex.Message); }
+                sb.AppendLine(RunCmd("cmd.exe", "/c net start wuauserv").Trim());
+                sb.AppendLine("Cache cleared. Open Windows Update to re-download pending updates.");
+            });
+        }
+
+        private void OpenWindowsUpdate()
+        {
+            try { Process.Start(new ProcessStartInfo { FileName = "ms-settings:windowsupdate", UseShellExecute = true }); }
+            catch { MessageBox.Show(ParentForm, "Could not open Windows Update settings.", "Windows Update", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        }
+
+        private void OpenLogsFolder() { Process.Start("explorer.exe", Q(_logsDir)); }
+
+        private void RunAsync(string taskName, Action<StringBuilder> work)
+        {
+            if (_isRunning) return;
+            _isRunning = true; SetButtonsEnabled(false); SetStatus("Running: " + taskName, true);
+            Thread t = new Thread(delegate()
+            {
+                string logFile = Path.Combine(_logsDir, "winupdate_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + SafeName(taskName) + ".log");
+                try
+                {
+                    StringBuilder sb = new StringBuilder();
+                    sb.AppendLine("============================================================");
+                    sb.AppendLine("Frontline Suite – Windows Update");
+                    sb.AppendLine("Task: " + taskName);
+                    sb.AppendLine("Generated: " + DateTime.Now.ToString("s"));
+                    sb.AppendLine("============================================================");
+                    sb.AppendLine();
+                    work(sb);
+                    string result = sb.ToString();
+                    File.WriteAllText(logFile, result, Encoding.UTF8);
+                    AppendOutput(result);
+                    AppendOutput("[" + Now() + "] Log saved: " + logFile);
+                }
+                catch (Exception ex) { AppendOutput("ERROR: " + ex.Message); }
+                finally { BeginInvoke(new MethodInvoker(delegate() { _isRunning = false; SetButtonsEnabled(true); SetStatus("Ready", false); })); }
+            });
+            t.IsBackground = true; t.Start();
+        }
+
+        private string RunPs(string command)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo { FileName = "powershell.exe", Arguments = "-NoProfile -ExecutionPolicy Bypass -Command " + Q(command), CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 };
+                using (Process p = Process.Start(psi)) { string o = p.StandardOutput.ReadToEnd(); p.WaitForExit(); return o; }
+            }
+            catch (Exception ex) { return "ERROR: " + ex.Message; }
+        }
+
+        private string RunCmd(string fileName, string arguments)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo { FileName = fileName, Arguments = arguments, CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+                using (Process p = Process.Start(psi)) { string o = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd(); p.WaitForExit(); return o; }
+            }
+            catch (Exception ex) { return "ERROR: " + ex.Message; }
+        }
+
+        private void AppendOutput(string text) { if (_outputBox == null) return; if (_outputBox.InvokeRequired) { _outputBox.BeginInvoke(new Action<string>(AppendOutput), text); return; } _outputBox.AppendText(text + Environment.NewLine); _outputBox.SelectionStart = _outputBox.TextLength; _outputBox.ScrollToCaret(); }
+        private void SetButtonsEnabled(bool enabled) { if (InvokeRequired) { BeginInvoke(new Action<bool>(SetButtonsEnabled), enabled); return; } foreach (Button b in _buttons) b.Enabled = enabled; }
+        private void SetStatus(string text, bool running) { if (InvokeRequired) { BeginInvoke(new Action<string, bool>(SetStatus), text, running); return; } _statusLabel.Text = text; if (running) { _progressBar.Style = ProgressBarStyle.Marquee; _progressBar.MarqueeAnimationSpeed = 30; } else { _progressBar.MarqueeAnimationSpeed = 0; _progressBar.Style = ProgressBarStyle.Blocks; _progressBar.Value = 0; } }
+        private static string Q(string v) { if (v == null) return "\"\""; return "\"" + v.Replace("\"", "\\\"") + "\""; }
+        private static string Now() { return DateTime.Now.ToString("HH:mm:ss"); }
+        private static string SafeName(string v) { StringBuilder sb = new StringBuilder(); foreach (char c in v) sb.Append(Char.IsLetterOrDigit(c) ? c : '_'); return sb.ToString().Trim('_'); }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Event Log Viewer tab
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal sealed class EventLogPanel : UserControl
+    {
+        private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
+        private readonly Color _green = Color.FromArgb(107, 218, 143);
+        private readonly string _logsDir;
+
+        private ListView _listView;
+        private TextBox _detailBox;
+        private Label _statusLabel;
+        private ProgressBar _progressBar;
+        private ComboBox _logCombo;
+        private ComboBox _levelCombo;
+        private NumericUpDown _countSpinner;
+        private readonly List<Button> _buttons = new List<Button>();
+        private bool _isRunning;
+
+        private class EventEntry
+        {
+            public string Time;
+            public string Level;
+            public string Source;
+            public string EventId;
+            public string Message;
+        }
+
+        public EventLogPanel(string logsDir, Color bg, Color panel, Color panel2,
+            Color orange, Color blue, Color text, Color muted)
+        {
+            _logsDir = logsDir;
+            _bg = bg; _panel = panel; _panel2 = panel2;
+            _orange = orange; _blue = blue; _text = text; _muted = muted;
+            Dock = DockStyle.Fill;
+            BackColor = _bg;
+            Build();
+            AppendDetail("Event Log Viewer ready.\r\nSelect a log, level, and count, then click Load Events.");
+        }
+
+        private void Build()
+        {
+            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, RowCount = 4, ColumnCount = 1, Padding = new Padding(0, 8, 0, 0) };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
+            Controls.Add(root);
+            root.Controls.Add(BuildFilterBar(), 0, 0);
+            root.Controls.Add(BuildListView(), 0, 1);
+            root.Controls.Add(BuildStatusPanel(), 0, 2);
+            root.Controls.Add(BuildDetailBox(), 0, 3);
+        }
+
+        private Control BuildFilterBar()
+        {
+            TableLayoutPanel bar = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _panel2, Padding = new Padding(10, 8, 10, 8), ColumnCount = 8 };
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 55));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+
+            bar.Controls.Add(Lbl("Log:"), 0, 0);
+            _logCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _text };
+            _logCombo.Items.AddRange(new object[] { "System", "Application", "Security" });
+            _logCombo.SelectedIndex = 0;
+            bar.Controls.Add(_logCombo, 1, 0);
+
+            bar.Controls.Add(Lbl("Level:"), 2, 0);
+            _levelCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _text };
+            _levelCombo.Items.AddRange(new object[] { "Error + Warning", "Error only", "Warning only", "All entries" });
+            _levelCombo.SelectedIndex = 0;
+            bar.Controls.Add(_levelCombo, 3, 0);
+
+            bar.Controls.Add(Lbl("Count:"), 4, 0);
+            _countSpinner = new NumericUpDown { Minimum = 10, Maximum = 500, Value = 50, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _text, Dock = DockStyle.Fill };
+            bar.Controls.Add(_countSpinner, 5, 0);
+
+            Button load = StyledBtn("Load Events");
+            load.Click += delegate { LoadEvents(); };
+            _buttons.Add(load);
+            bar.Controls.Add(load, 6, 0);
+
+            Button export = StyledBtn("Export to Log");
+            export.Click += delegate { ExportEvents(); };
+            _buttons.Add(export);
+            bar.Controls.Add(export, 7, 0);
+
+            return bar;
+        }
+
+        private Label Lbl(string t) { return new Label { Text = t, ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) }; }
+
+        private Button StyledBtn(string text)
+        {
+            Button btn = new Button { Text = text, Dock = DockStyle.Fill, Margin = new Padding(6, 0, 0, 0), BackColor = _panel, ForeColor = _text, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold), Cursor = Cursors.Hand };
+            btn.FlatAppearance.BorderColor = _orange; btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 39, 56);
+            return btn;
+        }
+
+        private Control BuildListView()
+        {
+            _listView = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, GridLines = true, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _text, Font = new Font("Consolas", 9F), BorderStyle = BorderStyle.FixedSingle, MultiSelect = false };
+            _listView.Columns.Add("Time",     160);
+            _listView.Columns.Add("Level",     70);
+            _listView.Columns.Add("Source",   200);
+            _listView.Columns.Add("Event ID",  75);
+            _listView.Columns.Add("Message",  600);
+            _listView.SelectedIndexChanged += delegate
+            {
+                if (_listView.SelectedItems.Count == 0) return;
+                EventEntry e = _listView.SelectedItems[0].Tag as EventEntry;
+                if (e != null) _detailBox.Text = "[" + e.Time + "]  " + e.Level + "  |  Source: " + e.Source + "  |  ID: " + e.EventId + "\r\n\r\n" + e.Message;
+            };
+            return _listView;
+        }
+
+        private Control BuildStatusPanel()
+        {
+            TableLayoutPanel p = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, ColumnCount = 2, Padding = new Padding(0, 8, 0, 4) };
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68)); p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+            _statusLabel = new Label { Text = "Ready", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            p.Controls.Add(_statusLabel, 0, 0);
+            _progressBar = new ProgressBar { Dock = DockStyle.Fill, Style = ProgressBarStyle.Blocks, Minimum = 0, Maximum = 100, Value = 0 };
+            p.Controls.Add(_progressBar, 1, 0);
+            return p;
+        }
+
+        private Control BuildDetailBox()
+        {
+            _detailBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = true, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _green, Font = new Font("Consolas", 9F), BorderStyle = BorderStyle.FixedSingle };
+            return _detailBox;
+        }
+
+        // ── logic ─────────────────────────────────────────────────────────────
+
+        private string _logName  = "System";
+        private string _levelFilter = "Error + Warning";
+        private int    _count    = 50;
+        private List<EventEntry> _entries = new List<EventEntry>();
+
+        private void LoadEvents()
+        {
+            if (_isRunning) return;
+            _logName     = _logCombo.SelectedItem.ToString();
+            _levelFilter = _levelCombo.SelectedItem.ToString();
+            _count       = (int)_countSpinner.Value;
+
+            _isRunning = true; SetButtonsEnabled(false); SetStatus("Loading " + _logName + " events...", true);
+            Thread t = new Thread(delegate()
+            {
+                try
+                {
+                    string entryType;
+                    switch (_levelFilter)
+                    {
+                        case "Error only":    entryType = "Error";          break;
+                        case "Warning only":  entryType = "Warning";        break;
+                        case "All entries":   entryType = "";               break;
+                        default:              entryType = "Error,Warning";  break;
+                    }
+
+                    string filter = String.IsNullOrEmpty(entryType) ? "" : " -EntryType " + entryType;
+                    string ps = "Get-EventLog -LogName " + _logName + filter + " -Newest " + _count +
+                                " | Select-Object TimeGenerated,EntryType,Source,EventID,Message" +
+                                " | ConvertTo-Csv -NoTypeInformation";
+                    string raw = RunPs(ps);
+                    List<EventEntry> entries = ParseCsvEvents(raw);
+                    _entries = entries;
+
+                    BeginInvoke(new MethodInvoker(delegate()
+                    {
+                        _listView.BeginUpdate();
+                        _listView.Items.Clear();
+                        foreach (EventEntry e in entries)
+                        {
+                            ListViewItem item = new ListViewItem(e.Time);
+                            item.ForeColor = e.Level.IndexOf("Error", StringComparison.OrdinalIgnoreCase) >= 0
+                                ? Color.FromArgb(220, 80, 60)
+                                : Color.FromArgb(244, 190, 60);
+                            item.SubItems.Add(e.Level);
+                            item.SubItems.Add(e.Source);
+                            item.SubItems.Add(e.EventId);
+                            item.SubItems.Add(e.Message.Replace("\r","").Replace("\n"," "));
+                            item.Tag = e;
+                            _listView.Items.Add(item);
+                        }
+                        _listView.EndUpdate();
+                        SetStatus("Loaded " + entries.Count + " events from " + _logName, false);
+                        AppendDetail("Loaded " + entries.Count + " events. Click a row to see full message.");
+                    }));
+                }
+                catch (Exception ex) { AppendDetail("ERROR: " + ex.Message); SetStatus("Error", false); }
+                finally { BeginInvoke(new MethodInvoker(delegate() { _isRunning = false; SetButtonsEnabled(true); })); }
+            });
+            t.IsBackground = true; t.Start();
+        }
+
+        private List<EventEntry> ParseCsvEvents(string csv)
+        {
+            List<EventEntry> list = new List<EventEntry>();
+            if (String.IsNullOrWhiteSpace(csv)) return list;
+            string[] lines = csv.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            // skip header
+            for (int i = 1; i < lines.Length; i++)
+            {
+                string[] cols = SplitCsvLine(lines[i].Trim());
+                if (cols.Length < 5) continue;
+                EventEntry e = new EventEntry
+                {
+                    Time    = Unquote(cols[0]),
+                    Level   = Unquote(cols[1]),
+                    Source  = Unquote(cols[2]),
+                    EventId = Unquote(cols[3]),
+                    Message = Unquote(cols[4])
+                };
+                list.Add(e);
+            }
+            return list;
+        }
+
+        private static string[] SplitCsvLine(string line)
+        {
+            List<string> fields = new List<string>();
+            bool inQuote = false;
+            StringBuilder cur = new StringBuilder();
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (c == '"')
+                {
+                    if (inQuote && i + 1 < line.Length && line[i + 1] == '"') { cur.Append('"'); i++; }
+                    else inQuote = !inQuote;
+                }
+                else if (c == ',' && !inQuote) { fields.Add(cur.ToString()); cur.Clear(); }
+                else cur.Append(c);
+            }
+            fields.Add(cur.ToString());
+            return fields.ToArray();
+        }
+
+        private static string Unquote(string s) { s = s.Trim(); if (s.StartsWith("\"") && s.EndsWith("\"")) s = s.Substring(1, s.Length - 2); return s.Replace("\"\"", "\""); }
+
+        private void ExportEvents()
+        {
+            if (_entries.Count == 0) { MessageBox.Show(ParentForm, "Load events first.", "Event Log Viewer", MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
+            string logFile = Path.Combine(_logsDir, "eventlog_" + _logName + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log");
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("============================================================");
+            sb.AppendLine("Frontline Suite – Event Log Export");
+            sb.AppendLine("Log: " + _logName + "  |  Filter: " + _levelFilter + "  |  Count: " + _entries.Count);
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("s"));
+            sb.AppendLine("============================================================");
+            sb.AppendLine();
+            foreach (EventEntry e in _entries)
+            {
+                sb.AppendLine("[" + e.Time + "]  " + e.Level.PadRight(10) + "  ID:" + e.EventId.PadRight(8) + "  " + e.Source);
+                sb.AppendLine("  " + e.Message.Replace("\n", "\n  "));
+                sb.AppendLine("------------------------------------------------------------");
+            }
+            File.WriteAllText(logFile, sb.ToString(), Encoding.UTF8);
+            AppendDetail("[" + Now() + "] Exported: " + logFile);
+            MessageBox.Show(ParentForm, "Saved:\r\n" + logFile, "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private string RunPs(string command)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo { FileName = "powershell.exe", Arguments = "-NoProfile -ExecutionPolicy Bypass -Command " + Q(command), CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, StandardOutputEncoding = Encoding.UTF8 };
+                using (Process p = Process.Start(psi)) { string o = p.StandardOutput.ReadToEnd(); p.WaitForExit(); return o; }
+            }
+            catch (Exception ex) { return "ERROR: " + ex.Message; }
+        }
+
+        private void AppendDetail(string text) { if (_detailBox == null) return; if (_detailBox.InvokeRequired) { _detailBox.BeginInvoke(new Action<string>(AppendDetail), text); return; } _detailBox.AppendText(text + Environment.NewLine); }
+        private void SetButtonsEnabled(bool enabled) { if (InvokeRequired) { BeginInvoke(new Action<bool>(SetButtonsEnabled), enabled); return; } foreach (Button b in _buttons) b.Enabled = enabled; }
+        private void SetStatus(string text, bool running) { if (InvokeRequired) { BeginInvoke(new Action<string, bool>(SetStatus), text, running); return; } _statusLabel.Text = text; if (running) { _progressBar.Style = ProgressBarStyle.Marquee; _progressBar.MarqueeAnimationSpeed = 30; } else { _progressBar.MarqueeAnimationSpeed = 0; _progressBar.Style = ProgressBarStyle.Blocks; _progressBar.Value = 0; } }
+        private static string Q(string v) { if (v == null) return "\"\""; return "\"" + v.Replace("\"", "\\\"") + "\""; }
+        private static string Now() { return DateTime.Now.ToString("HH:mm:ss"); }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Junk Cleaner tab
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal sealed class JunkCleanerPanel : UserControl
+    {
+        private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
+        private readonly Color _green = Color.FromArgb(107, 218, 143);
+        private readonly string _logsDir;
+
+        private TextBox _outputBox;
+        private Label _statusLabel;
+        private ProgressBar _progressBar;
+        private readonly List<Button> _buttons = new List<Button>();
+        private bool _isRunning;
+
+        // Targets: (display label, path, recursive)
+        private static readonly Tuple<string, string, bool>[] _targets = new[]
+        {
+            Tuple.Create("User Temp (%TEMP%)",                  Environment.GetEnvironmentVariable("TEMP") ?? "", true),
+            Tuple.Create("Windows Temp (C:\\Windows\\Temp)",    Path.Combine(Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows", "Temp"), true),
+            Tuple.Create("Prefetch (C:\\Windows\\Prefetch)",    Path.Combine(Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows", "Prefetch"), false),
+            Tuple.Create("IE/Edge Cache (WebCache)",            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\Windows\WebCache"), false),
+            Tuple.Create("Thumbnail Cache (thumbcache_*.db)",   Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\Windows\Explorer"), false),
+            Tuple.Create("Windows Error Reports",               Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Microsoft\Windows\WER\ReportArchive"), true),
+            Tuple.Create("Recent Files list",                   Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Microsoft\Windows\Recent"), false),
+        };
+
+        public JunkCleanerPanel(string logsDir, Color bg, Color panel, Color panel2,
+            Color orange, Color blue, Color text, Color muted)
+        {
+            _logsDir = logsDir;
+            _bg = bg; _panel = panel; _panel2 = panel2;
+            _orange = orange; _blue = blue; _text = text; _muted = muted;
+            Dock = DockStyle.Fill;
+            BackColor = _bg;
+            Build();
+            AppendOutput("Junk Cleaner ready.");
+            AppendOutput("Use 'Scan (Preview)' to see what will be removed before cleaning.");
+            AppendOutput("Files in use will be skipped automatically.");
+        }
+
+        private void Build()
+        {
+            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, RowCount = 3, ColumnCount = 1, Padding = new Padding(0, 8, 0, 0) };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            Controls.Add(root);
+            root.Controls.Add(BuildButtonGrid(), 0, 0);
+            root.Controls.Add(BuildStatusPanel(), 0, 1);
+            root.Controls.Add(BuildOutputBox(), 0, 2);
+        }
+
+        private Control BuildButtonGrid()
+        {
+            TableLayoutPanel grid = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _panel2, Padding = new Padding(10), ColumnCount = 4, RowCount = 1 };
+            for (int c = 0; c < 4; c++) grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25));
+            grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            AddBtn(grid, 0, 0, "Scan (Preview)",    "Show what would be removed without deleting anything", () => RunScan(preview: true));
+            AddBtn(grid, 1, 0, "Clean All",         "Delete all junk from all targets (with confirmation)",  () => RunClean(all: true));
+            AddBtn(grid, 2, 0, "Run Disk Cleanup",  "Open Windows built-in Disk Cleanup (cleanmgr)",         () => RunDiskCleanup());
+            AddBtn(grid, 3, 0, "Logs Folder",       "Open saved cleaner logs",                               () => OpenLogsFolder());
+
+            return grid;
+        }
+
+        private void AddBtn(TableLayoutPanel grid, int col, int row, string text, string tip, Action action)
+        {
+            Button btn = new Button { Text = text, Dock = DockStyle.Fill, Margin = new Padding(6), BackColor = _panel, ForeColor = _text, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold), Cursor = Cursors.Hand };
+            btn.FlatAppearance.BorderColor = _orange; btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 39, 56);
+            btn.Click += delegate { action(); };
+            new ToolTip { InitialDelay = 250, ReshowDelay = 100 }.SetToolTip(btn, tip);
+            _buttons.Add(btn); grid.Controls.Add(btn, col, row);
+        }
+
+        private Control BuildStatusPanel()
+        {
+            TableLayoutPanel p = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, ColumnCount = 2, Padding = new Padding(0, 8, 0, 4) };
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68)); p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+            _statusLabel = new Label { Text = "Ready", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            p.Controls.Add(_statusLabel, 0, 0);
+            _progressBar = new ProgressBar { Dock = DockStyle.Fill, Style = ProgressBarStyle.Blocks, Minimum = 0, Maximum = 100, Value = 0 };
+            p.Controls.Add(_progressBar, 1, 0);
+            return p;
+        }
+
+        private Control BuildOutputBox()
+        {
+            _outputBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _green, Font = new Font("Consolas", 10F), BorderStyle = BorderStyle.FixedSingle };
+            return _outputBox;
+        }
+
+        // ── logic ─────────────────────────────────────────────────────────────
+
+        private void RunScan(bool preview)
+        {
+            if (_isRunning) return;
+            _isRunning = true; SetButtonsEnabled(false); SetStatus(preview ? "Scanning..." : "Cleaning...", true);
+
+            Thread t = new Thread(delegate()
+            {
+                string logFile = Path.Combine(_logsDir, (preview ? "junk_scan_" : "junk_clean_") + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log");
+                StringBuilder log = new StringBuilder();
+                long totalSize = 0; int totalFiles = 0;
+
+                log.AppendLine("============================================================");
+                log.AppendLine("Frontline Suite – Junk Cleaner " + (preview ? "Scan Preview" : "Clean"));
+                log.AppendLine("Generated: " + DateTime.Now.ToString("s"));
+                log.AppendLine("============================================================");
+                log.AppendLine();
+
+                foreach (var target in _targets)
+                {
+                    string label = target.Item1;
+                    string path  = target.Item2;
+                    bool recurse = target.Item3;
+
+                    if (String.IsNullOrEmpty(path) || !Directory.Exists(path))
+                    {
+                        AppendOutput("[SKIP] " + label + " — path not found");
+                        log.AppendLine("[SKIP] " + label + " — path not found");
+                        continue;
+                    }
+
+                    AppendOutput("── " + label);
+                    log.AppendLine("── " + label + " (" + path + ")");
+
+                    try
+                    {
+                        SearchOption opt = recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+                        string[] files = Directory.GetFiles(path, "*", opt);
+                        long sectionSize = 0; int sectionFiles = 0; int skipped = 0;
+
+                        // For thumbnail cache, only target thumbcache_*.db files
+                        if (label.Contains("Thumbnail"))
+                            files = Array.FindAll(files, f => Path.GetFileName(f).StartsWith("thumbcache_", StringComparison.OrdinalIgnoreCase) && f.EndsWith(".db", StringComparison.OrdinalIgnoreCase));
+
+                        foreach (string file in files)
+                        {
+                            try
+                            {
+                                FileInfo fi = new FileInfo(file);
+                                sectionSize += fi.Length;
+                                sectionFiles++;
+                                if (!preview)
+                                {
+                                    fi.Delete();
+                                    log.AppendLine("  DEL " + file);
+                                }
+                            }
+                            catch { skipped++; }
+                        }
+
+                        totalSize  += sectionSize;
+                        totalFiles += sectionFiles;
+                        string summary = String.Format("  {0} file(s), {1:F2} MB{2}", sectionFiles, sectionSize / 1048576.0, skipped > 0 ? " (" + skipped + " skipped/in use)" : "");
+                        AppendOutput(summary);
+                        log.AppendLine(summary);
+                    }
+                    catch (Exception ex)
+                    {
+                        AppendOutput("  ERROR: " + ex.Message);
+                        log.AppendLine("  ERROR: " + ex.Message);
+                    }
+                }
+
+                string total = String.Format("\r\n{0}: {1} file(s), {2:F2} MB total", preview ? "PREVIEW TOTAL" : "CLEANED", totalFiles, totalSize / 1048576.0);
+                AppendOutput(total);
+                log.AppendLine(total);
+
+                File.WriteAllText(logFile, log.ToString(), Encoding.UTF8);
+                AppendOutput("[" + Now() + "] Log saved: " + logFile);
+                BeginInvoke(new MethodInvoker(delegate() { _isRunning = false; SetButtonsEnabled(true); SetStatus("Ready", false); }));
+            });
+            t.IsBackground = true; t.Start();
+        }
+
+        private void RunClean(bool all)
+        {
+            if (MessageBox.Show(ParentForm,
+                "This will permanently delete temporary and junk files from:\r\n\r\n" +
+                "• User Temp folder\r\n• Windows Temp folder\r\n• Prefetch cache\r\n• Web cache\r\n" +
+                "• Thumbnail cache\r\n• Windows Error Reports\r\n• Recent Files list\r\n\r\n" +
+                "Files currently in use will be skipped automatically.\r\n\r\nProceed?",
+                "Confirm Clean", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            RunScan(preview: false);
+        }
+
+        private void RunDiskCleanup()
+        {
+            try { Process.Start("cleanmgr.exe"); }
+            catch { MessageBox.Show(ParentForm, "Could not launch Disk Cleanup.", "Junk Cleaner", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        }
+
+        private void OpenLogsFolder() { Process.Start("explorer.exe", Q(_logsDir)); }
+
+        private void AppendOutput(string text) { if (_outputBox == null) return; if (_outputBox.InvokeRequired) { _outputBox.BeginInvoke(new Action<string>(AppendOutput), text); return; } _outputBox.AppendText(text + Environment.NewLine); _outputBox.SelectionStart = _outputBox.TextLength; _outputBox.ScrollToCaret(); }
+        private void SetButtonsEnabled(bool enabled) { if (InvokeRequired) { BeginInvoke(new Action<bool>(SetButtonsEnabled), enabled); return; } foreach (Button b in _buttons) b.Enabled = enabled; }
+        private void SetStatus(string text, bool running) { if (InvokeRequired) { BeginInvoke(new Action<string, bool>(SetStatus), text, running); return; } _statusLabel.Text = text; if (running) { _progressBar.Style = ProgressBarStyle.Marquee; _progressBar.MarqueeAnimationSpeed = 30; } else { _progressBar.MarqueeAnimationSpeed = 0; _progressBar.Style = ProgressBarStyle.Blocks; _progressBar.Value = 0; } }
+        private static string Q(string v) { if (v == null) return "\"\""; return "\"" + v.Replace("\"", "\\\"") + "\""; }
+        private static string Now() { return DateTime.Now.ToString("HH:mm:ss"); }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Hosts File Viewer / Editor tab
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal sealed class HostsFilePanel : UserControl
+    {
+        private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
+        private readonly Color _green = Color.FromArgb(107, 218, 143);
+        private readonly string _logsDir;
+
+        private TextBox _editor;
+        private Label _statusLabel;
+        private Label _infoLabel;
+        private readonly List<Button> _buttons = new List<Button>();
+
+        private static readonly string HostsPath = Path.Combine(
+            Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows",
+            @"System32\drivers\etc\hosts");
+
+        private static readonly string DefaultHosts =
+            "# Copyright (c) 1993-2009 Microsoft Corp.\r\n" +
+            "#\r\n" +
+            "# This is a sample HOSTS file used by Microsoft TCP/IP for Windows.\r\n" +
+            "#\r\n" +
+            "# This file contains the mappings of IP addresses to host names. Each\r\n" +
+            "# entry should be kept on an individual line. The IP address should\r\n" +
+            "# be placed in the first column followed by the corresponding host name.\r\n" +
+            "# The IP address and the host name should be separated by at least one\r\n" +
+            "# space.\r\n" +
+            "#\r\n" +
+            "# Additionally, comments (such as these) may be inserted on individual\r\n" +
+            "# lines or following the machine name denoted by a '#' symbol.\r\n" +
+            "#\r\n" +
+            "# For example:\r\n" +
+            "#\r\n" +
+            "#      102.54.94.97     rhino.acme.com          # source server\r\n" +
+            "#       38.25.63.10     x.acme.com              # x client host\r\n" +
+            "\r\n" +
+            "# localhost name resolution is handled within DNS itself.\r\n" +
+            "#\t127.0.0.1       localhost\r\n" +
+            "#\t::1             localhost\r\n";
+
+        public HostsFilePanel(string logsDir, Color bg, Color panel, Color panel2,
+            Color orange, Color blue, Color text, Color muted)
+        {
+            _logsDir = logsDir;
+            _bg = bg; _panel = panel; _panel2 = panel2;
+            _orange = orange; _blue = blue; _text = text; _muted = muted;
+            Dock = DockStyle.Fill;
+            BackColor = _bg;
+            Build();
+            LoadHosts();
+        }
+
+        private void Build()
+        {
+            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, RowCount = 3, ColumnCount = 1, Padding = new Padding(0, 8, 0, 0) };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+            Controls.Add(root);
+            root.Controls.Add(BuildToolbar(), 0, 0);
+            root.Controls.Add(BuildEditor(), 0, 1);
+            root.Controls.Add(BuildStatusBar(), 0, 2);
+        }
+
+        private Control BuildToolbar()
+        {
+            TableLayoutPanel bar = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _panel2, Padding = new Padding(10, 8, 10, 8), ColumnCount = 7 };
+            for (int c = 0; c < 7; c++) bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 7));
+
+            Button load    = Btn("Reload File",    "Reload the hosts file from disk",                         () => LoadHosts());
+            Button save    = Btn("Save Changes",   "Save edits back to the hosts file (requires Admin)",      () => SaveHosts());
+            Button backup  = Btn("Backup",         "Save a timestamped backup of the current hosts file",     () => BackupHosts());
+            Button restore = Btn("Reset to Default","Replace hosts file with Windows clean default",          () => ResetHosts());
+            Button flush   = Btn("Flush DNS",      "Run ipconfig /flushdns after saving",                     () => FlushDns());
+            Button analyze = Btn("Analyze",        "Highlight suspicious or non-default entries",             () => AnalyzeHosts());
+            Button openDir = Btn("Open Folder",    "Open the hosts file folder in Explorer",                  () => OpenHostsFolder());
+
+            bar.Controls.Add(load,    0, 0);
+            bar.Controls.Add(save,    1, 0);
+            bar.Controls.Add(backup,  2, 0);
+            bar.Controls.Add(restore, 3, 0);
+            bar.Controls.Add(flush,   4, 0);
+            bar.Controls.Add(analyze, 5, 0);
+            bar.Controls.Add(openDir, 6, 0);
+
+            return bar;
+        }
+
+        private Button Btn(string text, string tip, Action action)
+        {
+            Button btn = new Button { Text = text, Dock = DockStyle.Fill, Margin = new Padding(4, 0, 4, 0), BackColor = _panel, ForeColor = _text, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold), Cursor = Cursors.Hand };
+            btn.FlatAppearance.BorderColor = _orange; btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 39, 56);
+            btn.Click += delegate { action(); };
+            new ToolTip { InitialDelay = 250, ReshowDelay = 100 }.SetToolTip(btn, tip);
+            _buttons.Add(btn);
+            return btn;
+        }
+
+        private Control BuildEditor()
+        {
+            _editor = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Multiline = true,
+                ScrollBars = ScrollBars.Both,
+                WordWrap = false,
+                BackColor = Color.FromArgb(5, 7, 9),
+                ForeColor = _green,
+                Font = new Font("Consolas", 10F),
+                BorderStyle = BorderStyle.FixedSingle,
+                AcceptsReturn = true,
+                AcceptsTab = true
+            };
+            return _editor;
+        }
+
+        private Control BuildStatusBar()
+        {
+            TableLayoutPanel bar = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _panel, ColumnCount = 2, Padding = new Padding(8, 0, 8, 0) };
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
+            _statusLabel = new Label { Text = "Ready", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI", 9F) };
+            _infoLabel   = new Label { Text = "", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleRight, Font = new Font("Segoe UI", 9F) };
+            bar.Controls.Add(_statusLabel, 0, 0);
+            bar.Controls.Add(_infoLabel,   1, 0);
+            return bar;
+        }
+
+        // ── logic ─────────────────────────────────────────────────────────────
+
+        private void LoadHosts()
+        {
+            try
+            {
+                if (!File.Exists(HostsPath)) { _editor.Text = "# Hosts file not found at: " + HostsPath; SetStatus("File not found"); return; }
+                _editor.Text = File.ReadAllText(HostsPath);
+                int activeLines = _editor.Lines.Count(l => !String.IsNullOrWhiteSpace(l) && !l.TrimStart().StartsWith("#"));
+                SetStatus("Loaded: " + HostsPath);
+                _infoLabel.Text = activeLines + " active entr" + (activeLines == 1 ? "y" : "ies");
+            }
+            catch (Exception ex) { SetStatus("ERROR: " + ex.Message); }
+        }
+
+        private void SaveHosts()
+        {
+            if (!IsAdministrator())
+            {
+                MessageBox.Show(ParentForm, "Administrator permission is required to edit the hosts file.\r\nRun Frontline Suite as Administrator.", "Hosts File", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (MessageBox.Show(ParentForm, "Save changes to:\r\n" + HostsPath + "\r\n\r\nA backup will be created first.", "Save Hosts File", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            try
+            {
+                BackupHosts(silent: true);
+                File.WriteAllText(HostsPath, _editor.Text, Encoding.UTF8);
+                SetStatus("Saved successfully.");
+                MessageBox.Show(ParentForm, "Hosts file saved.\r\nRun 'Flush DNS' to apply changes immediately.", "Saved", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex) { MessageBox.Show(ParentForm, "Save failed: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        private void BackupHosts(bool silent = false)
+        {
+            try
+            {
+                if (!File.Exists(HostsPath)) { if (!silent) MessageBox.Show(ParentForm, "Hosts file not found.", "Backup", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                string dest = Path.Combine(_logsDir, "hosts_backup_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt");
+                File.Copy(HostsPath, dest, true);
+                if (!silent) { SetStatus("Backup saved: " + dest); MessageBox.Show(ParentForm, "Backup saved:\r\n" + dest, "Backup Complete", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+            }
+            catch (Exception ex) { if (!silent) MessageBox.Show(ParentForm, "Backup failed: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        private void ResetHosts()
+        {
+            if (!IsAdministrator()) { MessageBox.Show(ParentForm, "Administrator permission required.", "Hosts File", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            if (MessageBox.Show(ParentForm, "This will replace the hosts file with the Windows default.\r\n\r\nAll current entries (including any blocks or redirects) will be removed.\r\nA backup will be saved first.\r\n\r\nProceed?", "Reset to Default", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+            try
+            {
+                BackupHosts(silent: true);
+                File.WriteAllText(HostsPath, DefaultHosts, Encoding.ASCII);
+                LoadHosts();
+                SetStatus("Hosts file reset to Windows default.");
+                MessageBox.Show(ParentForm, "Hosts file reset to default.\r\nRun 'Flush DNS' to apply.", "Reset Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex) { MessageBox.Show(ParentForm, "Reset failed: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        private void FlushDns()
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo { FileName = "ipconfig.exe", Arguments = "/flushdns", CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true };
+                using (Process p = Process.Start(psi)) { string o = p.StandardOutput.ReadToEnd(); p.WaitForExit(); SetStatus("DNS flushed. " + o.Trim()); }
+                MessageBox.Show(ParentForm, "DNS cache flushed successfully.", "Flush DNS", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex) { MessageBox.Show(ParentForm, "Flush failed: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        private void AnalyzeHosts()
+        {
+            List<string> suspicious = new List<string>();
+            List<string> active = new List<string>();
+
+            foreach (string line in _editor.Lines)
+            {
+                string trimmed = line.Trim();
+                if (String.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith("#")) continue;
+                active.Add(trimmed);
+
+                // Flag anything that isn't the standard localhost entries
+                bool isLocalhost = trimmed.StartsWith("127.0.0.1") || trimmed.StartsWith("::1") || trimmed.StartsWith("0.0.0.0");
+                if (!isLocalhost) { suspicious.Add(trimmed); continue; }
+
+                // Flag redirects of well-known domains
+                string lower = trimmed.ToLowerInvariant();
+                string[] watched = { "google", "microsoft", "windows", "apple", "amazon", "facebook", "paypal", "bank" };
+                foreach (string w in watched) { if (lower.Contains(w)) { suspicious.Add("!! WATCHED DOMAIN: " + trimmed); break; } }
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("── Hosts File Analysis ──────────────────────────────────────");
+            sb.AppendLine("Active entries (non-comment):  " + active.Count);
+            sb.AppendLine("Entries that may need review:  " + suspicious.Count);
+            sb.AppendLine();
+            if (suspicious.Count == 0) { sb.AppendLine("No suspicious entries detected. File appears clean."); }
+            else { sb.AppendLine("Entries to review:"); foreach (string s in suspicious) sb.AppendLine("  " + s); }
+            sb.AppendLine();
+            sb.AppendLine("Note: Ad-blockers and security tools legitimately add many entries.");
+            sb.AppendLine("Review flagged lines manually before removing anything.");
+
+            Form f = new Form { Text = "Hosts File Analysis", Size = new Size(800, 500), StartPosition = FormStartPosition.CenterParent, BackColor = _bg, ForeColor = _text, Font = new Font("Segoe UI", 10F) };
+            TextBox tb = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _green, Font = new Font("Consolas", 10F), Text = sb.ToString() };
+            f.Controls.Add(tb);
+            f.ShowDialog(ParentForm);
+        }
+
+        private void OpenHostsFolder()
+        {
+            string dir = Path.GetDirectoryName(HostsPath);
+            if (Directory.Exists(dir)) Process.Start("explorer.exe", Q(dir));
+        }
+
+        private void SetStatus(string text) { if (InvokeRequired) { BeginInvoke(new Action<string>(SetStatus), text); return; } _statusLabel.Text = text; }
+        private static bool IsAdministrator() { try { return new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator); } catch { return false; } }
+        private static string Q(string v) { if (v == null) return "\"\""; return "\"" + v.Replace("\"", "\\\"") + "\""; }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Firewall Manager tab
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal sealed class FirewallPanel : UserControl
+    {
+        private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
+        private readonly Color _green  = Color.FromArgb(107, 218, 143);
+        private readonly Color _red    = Color.FromArgb(220, 80,  60);
+        private readonly Color _yellow = Color.FromArgb(244, 190, 60);
+        private readonly string _logsDir;
+
+        private ListView   _listView;
+        private TextBox    _outputBox;
+        private Label      _statusLabel;
+        private ProgressBar _progressBar;
+        private ComboBox   _directionCombo;
+        private ComboBox   _filterCombo;
+        private TextBox    _searchBox;
+        private readonly List<Button> _buttons = new List<Button>();
+        private bool _isRunning;
+
+        private class FwRule
+        {
+            public string Name;
+            public string Direction;   // Inbound / Outbound
+            public string Action;      // Allow / Block
+            public string Enabled;     // True / False
+            public string Profile;     // Domain, Private, Public, Any
+            public string Protocol;
+            public string LocalPort;
+            public string RemotePort;
+            public string Program;
+        }
+
+        private List<FwRule> _allRules = new List<FwRule>();
+
+        public FirewallPanel(string logsDir, Color bg, Color panel, Color panel2,
+            Color orange, Color blue, Color text, Color muted)
+        {
+            _logsDir = logsDir;
+            _bg = bg; _panel = panel; _panel2 = panel2;
+            _orange = orange; _blue = blue; _text = text; _muted = muted;
+            Dock = DockStyle.Fill;
+            BackColor = _bg;
+            Build();
+            AppendOutput("Firewall Manager ready.");
+            AppendOutput(IsAdministrator()
+                ? "Running as Administrator — enable/disable actions available."
+                : "WARNING: Not running as Administrator. Rule changes will be unavailable.");
+            AppendOutput("Click 'Load Rules' to populate the list.");
+        }
+
+        private void Build()
+        {
+            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, RowCount = 4, ColumnCount = 1, Padding = new Padding(0, 8, 0, 0) };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 62));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 38));
+            Controls.Add(root);
+            root.Controls.Add(BuildToolbar(), 0, 0);
+            root.Controls.Add(BuildListView(), 0, 1);
+            root.Controls.Add(BuildStatusPanel(), 0, 2);
+            root.Controls.Add(BuildOutputBox(), 0, 3);
+        }
+
+        private Control BuildToolbar()
+        {
+            TableLayoutPanel bar = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _panel2, Padding = new Padding(10, 8, 10, 8), ColumnCount = 10 };
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 75));   // Direction label
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));  // Direction combo
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 55));   // Filter label
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));  // Filter combo
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 55));   // Search label
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));   // Search box
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));  // Load
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));  // Disable Selected
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));  // Enable Selected
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));  // Export
+
+            bar.Controls.Add(Lbl("Direction:"), 0, 0);
+            _directionCombo = Combo(new[] { "Both", "Inbound", "Outbound" });
+            _directionCombo.SelectedIndexChanged += delegate { ApplyFilter(); };
+            bar.Controls.Add(_directionCombo, 1, 0);
+
+            bar.Controls.Add(Lbl("Show:"), 2, 0);
+            _filterCombo = Combo(new[] { "All rules", "Enabled only", "Disabled only", "Block rules", "Allow rules" });
+            _filterCombo.SelectedIndexChanged += delegate { ApplyFilter(); };
+            bar.Controls.Add(_filterCombo, 3, 0);
+
+            bar.Controls.Add(Lbl("Search:"), 4, 0);
+            _searchBox = new TextBox { Dock = DockStyle.Fill, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _text, Font = new Font("Consolas", 9F), BorderStyle = BorderStyle.FixedSingle };
+            _searchBox.TextChanged += delegate { ApplyFilter(); };
+            bar.Controls.Add(_searchBox, 5, 0);
+
+            Button load    = Btn("Load Rules",      () => LoadRules());
+            Button disable = Btn("Disable Selected",() => ToggleSelected(false));
+            Button enable  = Btn("Enable Selected", () => ToggleSelected(true));
+            Button export  = Btn("Export List",     () => ExportRules());
+
+            _buttons.Add(load); _buttons.Add(disable); _buttons.Add(enable); _buttons.Add(export);
+            bar.Controls.Add(load,    6, 0);
+            bar.Controls.Add(disable, 7, 0);
+            bar.Controls.Add(enable,  8, 0);
+            bar.Controls.Add(export,  9, 0);
+
+            return bar;
+        }
+
+        private Label Lbl(string t)
+        {
+            return new Label { Text = t, ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) };
+        }
+
+        private ComboBox Combo(string[] items)
+        {
+            ComboBox cb = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _text };
+            cb.Items.AddRange(items); cb.SelectedIndex = 0;
+            return cb;
+        }
+
+        private Button Btn(string text, Action action)
+        {
+            Button btn = new Button { Text = text, Dock = DockStyle.Fill, Margin = new Padding(4, 0, 0, 0), BackColor = _panel, ForeColor = _text, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold), Cursor = Cursors.Hand };
+            btn.FlatAppearance.BorderColor = _orange; btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 39, 56);
+            btn.Click += delegate { action(); };
+            return btn;
+        }
+
+        private Control BuildListView()
+        {
+            _listView = new ListView
+            {
+                Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true,
+                GridLines = true, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _text,
+                Font = new Font("Consolas", 9F), BorderStyle = BorderStyle.FixedSingle,
+                MultiSelect = false, VirtualMode = false
+            };
+            _listView.Columns.Add("Status",     70);
+            _listView.Columns.Add("Direction",  80);
+            _listView.Columns.Add("Action",     65);
+            _listView.Columns.Add("Name",      300);
+            _listView.Columns.Add("Protocol",   70);
+            _listView.Columns.Add("Local Port", 90);
+            _listView.Columns.Add("Profile",   120);
+            _listView.Columns.Add("Program",   300);
+            _listView.SelectedIndexChanged += delegate
+            {
+                if (_listView.SelectedItems.Count == 0) return;
+                FwRule r = _listView.SelectedItems[0].Tag as FwRule;
+                if (r == null) return;
+                AppendOutput(String.Format("[Selected] {0} | {1} | {2} | Enabled:{3} | Proto:{4} | LPort:{5} | RPort:{6} | Profile:{7}",
+                    r.Name, r.Direction, r.Action, r.Enabled, r.Protocol, r.LocalPort, r.RemotePort, r.Profile));
+                if (!String.IsNullOrWhiteSpace(r.Program) && r.Program != "Any")
+                    AppendOutput("  Program: " + r.Program);
+            };
+            return _listView;
+        }
+
+        private Control BuildStatusPanel()
+        {
+            TableLayoutPanel p = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = _bg, ColumnCount = 2, Padding = new Padding(0, 8, 0, 4) };
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68)); p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+            _statusLabel = new Label { Text = "Ready", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            p.Controls.Add(_statusLabel, 0, 0);
+            _progressBar = new ProgressBar { Dock = DockStyle.Fill, Style = ProgressBarStyle.Blocks, Minimum = 0, Maximum = 100, Value = 0 };
+            p.Controls.Add(_progressBar, 1, 0);
+            return p;
+        }
+
+        private Control BuildOutputBox()
+        {
+            _outputBox = new TextBox { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Both, WordWrap = false, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _green, Font = new Font("Consolas", 10F), BorderStyle = BorderStyle.FixedSingle };
+            return _outputBox;
+        }
+
+        // ── logic ─────────────────────────────────────────────────────────────
+
+        private void LoadRules()
+        {
+            if (_isRunning) return;
+            _isRunning = true; SetButtonsEnabled(false); SetStatus("Loading firewall rules...", true);
+
+            Thread t = new Thread(delegate()
+            {
+                try
+                {
+                    // Use netsh to dump all rules as a parseable block
+                    string raw = RunCmd("netsh", "advfirewall firewall show rule name=all verbose");
+                    List<FwRule> rules = ParseNetshRules(raw);
+                    _allRules = rules;
+
+                    BeginInvoke(new MethodInvoker(delegate()
+                    {
+                        ApplyFilter();
+                        AppendOutput("[" + Now() + "] Loaded " + rules.Count + " firewall rules.");
+                        SetStatus("Loaded " + rules.Count + " rules", false);
+                    }));
+                }
+                catch (Exception ex) { AppendOutput("ERROR: " + ex.Message); }
+                finally { BeginInvoke(new MethodInvoker(delegate() { _isRunning = false; SetButtonsEnabled(true); if (_statusLabel.Text.StartsWith("Loading")) SetStatus("Ready", false); })); }
+            });
+            t.IsBackground = true; t.Start();
+        }
+
+        private List<FwRule> ParseNetshRules(string raw)
+        {
+            List<FwRule> rules = new List<FwRule>();
+            if (String.IsNullOrWhiteSpace(raw)) return rules;
+
+            // netsh outputs blocks separated by blank lines; each block is one rule
+            string[] blocks = raw.Split(new[] { "\r\n\r\n", "\n\n" }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string block in blocks)
+            {
+                if (!block.Contains("Rule Name:")) continue;
+                FwRule r = new FwRule();
+                foreach (string rawLine in block.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    int colon = rawLine.IndexOf(':');
+                    if (colon < 0) continue;
+                    string key = rawLine.Substring(0, colon).Trim().ToLowerInvariant();
+                    string val = rawLine.Substring(colon + 1).Trim();
+                    switch (key)
+                    {
+                        case "rule name":   r.Name      = val; break;
+                        case "direction":   r.Direction = val; break;
+                        case "action":      r.Action    = val; break;
+                        case "enabled":     r.Enabled   = val; break;
+                        case "profiles":    r.Profile   = val; break;
+                        case "protocol":    r.Protocol  = val; break;
+                        case "localport":   r.LocalPort = val; break;
+                        case "remoteport":  r.RemotePort= val; break;
+                        case "program":     r.Program   = val; break;
+                    }
+                }
+                if (!String.IsNullOrWhiteSpace(r.Name)) rules.Add(r);
+            }
+            return rules;
+        }
+
+        private void ApplyFilter()
+        {
+            if (_allRules == null || _allRules.Count == 0) return;
+
+            string dir    = _directionCombo.SelectedItem != null ? _directionCombo.SelectedItem.ToString() : "Both";
+            string filter = _filterCombo.SelectedItem    != null ? _filterCombo.SelectedItem.ToString()    : "All rules";
+            string search = _searchBox.Text.Trim().ToLowerInvariant();
+
+            IEnumerable<FwRule> filtered = _allRules;
+
+            if (dir != "Both")
+                filtered = filtered.Where(r => String.Equals(r.Direction, dir, StringComparison.OrdinalIgnoreCase));
+
+            switch (filter)
+            {
+                case "Enabled only":  filtered = filtered.Where(r => String.Equals(r.Enabled, "Yes", StringComparison.OrdinalIgnoreCase)); break;
+                case "Disabled only": filtered = filtered.Where(r => !String.Equals(r.Enabled, "Yes", StringComparison.OrdinalIgnoreCase)); break;
+                case "Block rules":   filtered = filtered.Where(r => String.Equals(r.Action, "Block", StringComparison.OrdinalIgnoreCase)); break;
+                case "Allow rules":   filtered = filtered.Where(r => String.Equals(r.Action, "Allow", StringComparison.OrdinalIgnoreCase)); break;
+            }
+
+            if (!String.IsNullOrEmpty(search))
+                filtered = filtered.Where(r =>
+                    (r.Name    ?? "").ToLowerInvariant().Contains(search) ||
+                    (r.Program ?? "").ToLowerInvariant().Contains(search) ||
+                    (r.LocalPort ?? "").ToLowerInvariant().Contains(search));
+
+            List<FwRule> results = filtered.ToList();
+
+            _listView.BeginUpdate();
+            _listView.Items.Clear();
+            foreach (FwRule r in results)
+            {
+                bool enabled = String.Equals(r.Enabled, "Yes", StringComparison.OrdinalIgnoreCase);
+                bool isBlock = String.Equals(r.Action, "Block", StringComparison.OrdinalIgnoreCase);
+
+                ListViewItem item = new ListViewItem(enabled ? "Enabled" : "Disabled");
+                item.ForeColor = !enabled ? _muted : isBlock ? _red : _green;
+                item.SubItems.Add(r.Direction ?? "");
+                item.SubItems.Add(r.Action    ?? "");
+                item.SubItems.Add(r.Name      ?? "");
+                item.SubItems.Add(r.Protocol  ?? "");
+                item.SubItems.Add(r.LocalPort ?? "");
+                item.SubItems.Add(r.Profile   ?? "");
+                item.SubItems.Add(r.Program   ?? "");
+                item.Tag = r;
+                _listView.Items.Add(item);
+            }
+            _listView.EndUpdate();
+            SetStatus("Showing " + results.Count + " of " + _allRules.Count + " rules", false);
+        }
+
+        private void ToggleSelected(bool enable)
+        {
+            if (_listView.SelectedItems.Count == 0)
+            {
+                MessageBox.Show(ParentForm, "Select a rule from the list first.", "Firewall Manager", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (!IsAdministrator())
+            {
+                MessageBox.Show(ParentForm, "Administrator permission is required to change firewall rules.\r\nRun Frontline Suite as Administrator.", "Firewall Manager", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            FwRule rule = _listView.SelectedItems[0].Tag as FwRule;
+            if (rule == null) return;
+
+            string verb = enable ? "enable" : "disable";
+            if (MessageBox.Show(ParentForm,
+                "Are you sure you want to " + verb + " this firewall rule?\r\n\r\n" + rule.Name,
+                "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+            try
+            {
+                string newState = enable ? "yes" : "no";
+                string args = "advfirewall firewall set rule name=" + Q(rule.Name) + " new enable=" + newState;
+                string result = RunCmd("netsh", args);
+                AppendOutput("[" + Now() + "] " + (enable ? "Enabled" : "Disabled") + " rule: " + rule.Name);
+                AppendOutput("  " + result.Trim());
+                // Refresh
+                LoadRules();
+            }
+            catch (Exception ex) { AppendOutput("ERROR: " + ex.Message); }
+        }
+
+        private void ExportRules()
+        {
+            if (_allRules.Count == 0)
+            {
+                MessageBox.Show(ParentForm, "Load rules first.", "Firewall Manager", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            string logFile = Path.Combine(_logsDir, "firewall_rules_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log");
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("============================================================");
+            sb.AppendLine("Frontline Suite – Firewall Rules Export");
+            sb.AppendLine("Generated: " + DateTime.Now.ToString("s"));
+            sb.AppendLine("Total rules: " + _allRules.Count);
+            sb.AppendLine("============================================================");
+            sb.AppendLine();
+
+            // Group: Block rules first (most security-relevant), then by direction
+            var ordered = _allRules
+                .OrderBy(r => String.Equals(r.Action, "Block", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(r => r.Direction ?? "")
+                .ThenBy(r => String.Equals(r.Enabled, "Yes", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(r => r.Name ?? "");
+
+            foreach (FwRule r in ordered)
+            {
+                sb.AppendLine(String.Format("{0,-10} {1,-10} {2,-10} {3}", r.Enabled ?? "", r.Direction ?? "", r.Action ?? "", r.Name ?? ""));
+                if (!String.IsNullOrWhiteSpace(r.Program) && r.Program != "Any")
+                    sb.AppendLine("           Program: " + r.Program);
+                if (!String.IsNullOrWhiteSpace(r.LocalPort) && r.LocalPort != "Any")
+                    sb.AppendLine("           Port: " + r.LocalPort + " / Protocol: " + (r.Protocol ?? ""));
+            }
+
+            File.WriteAllText(logFile, sb.ToString(), Encoding.UTF8);
+            AppendOutput("[" + Now() + "] Exported: " + logFile);
+            MessageBox.Show(ParentForm, "Saved:\r\n" + logFile, "Export Complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private string RunCmd(string fileName, string arguments)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo
+                {
+                    FileName = fileName, Arguments = arguments,
+                    CreateNoWindow = true, UseShellExecute = false,
+                    RedirectStandardOutput = true, RedirectStandardError = true,
+                    StandardOutputEncoding = Encoding.Unicode  // netsh outputs UTF-16
+                };
+                using (Process p = Process.Start(psi))
+                {
+                    string output = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit();
+                    return output;
+                }
+            }
+            catch (Exception ex) { return "ERROR: " + ex.Message; }
+        }
+
+        private void AppendOutput(string text) { if (_outputBox == null) return; if (_outputBox.InvokeRequired) { _outputBox.BeginInvoke(new Action<string>(AppendOutput), text); return; } _outputBox.AppendText(text + Environment.NewLine); _outputBox.SelectionStart = _outputBox.TextLength; _outputBox.ScrollToCaret(); }
+        private void SetButtonsEnabled(bool enabled) { if (InvokeRequired) { BeginInvoke(new Action<bool>(SetButtonsEnabled), enabled); return; } foreach (Button b in _buttons) b.Enabled = enabled; }
+        private void SetStatus(string text, bool running) { if (InvokeRequired) { BeginInvoke(new Action<string, bool>(SetStatus), text, running); return; } _statusLabel.Text = text; if (running) { _progressBar.Style = ProgressBarStyle.Marquee; _progressBar.MarqueeAnimationSpeed = 30; } else { _progressBar.MarqueeAnimationSpeed = 0; _progressBar.Style = ProgressBarStyle.Blocks; _progressBar.Value = 0; } }
+        private static bool IsAdministrator() { try { return new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator); } catch { return false; } }
+        private static string Q(string v) { if (v == null) return "\"\""; return "\"" + v.Replace("\"", "\\\"") + "\""; }
         private static string Now() { return DateTime.Now.ToString("HH:mm:ss"); }
     }
 }
