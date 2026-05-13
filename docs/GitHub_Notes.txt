@@ -1,0 +1,9 @@
+# GitHub One-Line Install Notes
+
+After uploading this package to GitHub, you can tell users to download the ZIP and run:
+
+```text
+INSTALL_StartMenu_Only_NoSDK.cmd
+```
+
+This no-SDK fallback package is meant for source-based builds on Windows using the built-in .NET Framework C# compiler.
