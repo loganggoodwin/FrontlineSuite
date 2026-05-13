@@ -93,7 +93,7 @@ namespace FrontlineSuite
     internal sealed class MainForm : Form
     {
         private const string AppName    = "Frontline Suite";
-        private const string AppVersion = "4.1.0";
+        private const string AppVersion = "4.2.0";
 
         private readonly Color _bg     = Color.FromArgb(10, 12, 16);
         private readonly Color _panel  = Color.FromArgb(17, 21, 32);
@@ -715,6 +715,7 @@ namespace FrontlineSuite
 
         private ComboBox _adapterCombo;
         private ComboBox _cidrCombo;
+        private CheckBox _stealthCheck;
         private TextBox _outputBox;
         private Label _statusLabel;
         private Label _dnsLabel;
@@ -785,11 +786,12 @@ namespace FrontlineSuite
             panel.Dock = DockStyle.Fill;
             panel.BackColor = _panel2;
             panel.Padding = new Padding(10, 8, 10, 8);
-            panel.ColumnCount = 6;
+            panel.ColumnCount = 7;
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135)); // "Network Adapter" label
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));   // adapter combo
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));  // "Scan Range" label
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110)); // CIDR combo
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 115)); // Stealth checkbox
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));   // DNS label
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150)); // Refresh button
 
@@ -821,12 +823,29 @@ namespace FrontlineSuite
                 "/26–/28 = small segments or VLANs");
             panel.Controls.Add(_cidrCombo, 3, 0);
 
+            _stealthCheck = new CheckBox
+            {
+                Text = "Stealth Mode",
+                ForeColor = _muted,
+                BackColor = Color.Transparent,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            new ToolTip { InitialDelay = 250 }.SetToolTip(_stealthCheck,
+                "Stealth Mode: reduces scan threads from 64 to 8\r\n" +
+                "and adds a short delay between pings.\r\n" +
+                "Slower, but much less likely to trigger IDS alerts\r\n" +
+                "on managed or corporate networks.");
+            panel.Controls.Add(_stealthCheck, 4, 0);
+
             _dnsLabel = new Label { Text = "Current DNS: Not checked yet", ForeColor = _termGreen, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Consolas", 9F) };
-            panel.Controls.Add(_dnsLabel, 4, 0);
+            panel.Controls.Add(_dnsLabel, 5, 0);
 
             Button refresh = SmallBtn("Refresh Adapters");
             refresh.Click += delegate { RefreshAdapters(); };
-            panel.Controls.Add(refresh, 5, 0);
+            panel.Controls.Add(refresh, 6, 0);
 
             return panel;
         }
@@ -854,8 +873,8 @@ namespace FrontlineSuite
 
             AddBtn(grid, 0, 2, "Device Guide",           "Explain scan notes and common services",              () => ShowDeviceGuide());
             AddBtn(grid, 1, 2, "DNS Guide",              "Explain included DNS profiles",                       () => ShowDnsGuide());
-            AddBtn(grid, 2, 2, "Network Settings",       "Open Windows network settings",                       () => OpenNetworkSettings());
-            AddBtn(grid, 3, 2, "Clear Console",          "Clear the output window",                             () => { _outputBox.Clear(); AppendOutput(AppName + " console cleared."); });
+            AddBtn(grid, 2, 2, "Clear Device History",   "Delete the known_devices.txt inventory file",         () => ClearDeviceHistory());
+            AddBtn(grid, 3, 2, "Network Settings",       "Open Windows network settings",                       () => OpenNetworkSettings());
 
             return grid;
         }
@@ -1081,14 +1100,30 @@ namespace FrontlineSuite
             AppendOutput("[" + Now() + "] Local IP: " + adapter.IpAddress + " | Mask: " + adapter.SubnetMask);
             List<IPAddress> hosts = BuildHostList(adapter.IpAddress, adapter.SubnetMask, cidrPrefix, out _lastScanNote);
             AppendOutput("[" + Now() + "] " + _lastScanNote);
+
+            // Read stealth setting from UI thread
+            bool stealth = false;
+            try
+            {
+                if (_stealthCheck.InvokeRequired)
+                    _stealthCheck.Invoke(new MethodInvoker(delegate() { stealth = _stealthCheck.Checked; }));
+                else
+                    stealth = _stealthCheck.Checked;
+            }
+            catch { stealth = false; }
+
+            int threads = stealth ? 8 : 64;
+            int pingDelayMs = stealth ? 15 : 0;
+            AppendOutput("[" + Now() + "] Mode: " + (stealth ? "Stealth (" + threads + " threads, " + pingDelayMs + "ms delay)" : "Normal (64 threads)"));
             AppendOutput("[" + Now() + "] Checking " + hosts.Count + " address(es)...");
 
             List<IPAddress> alive = new List<IPAddress>();
             object lck = new object();
             int checkedCount = 0;
 
-            Parallel.ForEach(hosts, new ParallelOptions { MaxDegreeOfParallelism = 64 }, delegate(IPAddress ip)
+            Parallel.ForEach(hosts, new ParallelOptions { MaxDegreeOfParallelism = threads }, delegate(IPAddress ip)
             {
+                if (pingDelayMs > 0) Thread.Sleep(pingDelayMs);
                 if (PingHost(ip)) lock (lck) { alive.Add(ip); }
                 int done = Interlocked.Increment(ref checkedCount);
                 if (done % 25 == 0) AppendOutput("[" + Now() + "] Checked " + done + "/" + hosts.Count + "...");
@@ -1288,6 +1323,50 @@ namespace FrontlineSuite
         }
 
         private void OpenLogsFolder() { Directory.CreateDirectory(_logsDir); Process.Start(new ProcessStartInfo { FileName = _logsDir, UseShellExecute = true }); }
+
+        private void ClearDeviceHistory()
+        {
+            if (!File.Exists(_knownDevicesFile))
+            {
+                MessageBox.Show(ParentForm, "No device history file found.\r\nRun a network scan first to create one.", AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Show current file size and entry count for context
+            int lineCount = 0;
+            long fileSize = 0;
+            try
+            {
+                string[] lines = File.ReadAllLines(_knownDevicesFile);
+                lineCount = lines.Length;
+                fileSize = new FileInfo(_knownDevicesFile).Length;
+            }
+            catch { }
+
+            if (MessageBox.Show(ParentForm,
+                String.Format("This will clear the known device history.\r\n\r\n" +
+                    "File: {0}\r\n" +
+                    "Entries: {1}  ({2} bytes)\r\n\r\n" +
+                    "After clearing, all devices will appear as 'New or unknown'\r\n" +
+                    "on the next scan — useful when moving to a new network\r\n" +
+                    "or handing a machine off to a new owner.\r\n\r\n" +
+                    "Proceed?", _knownDevicesFile, lineCount, fileSize),
+                "Clear Device History", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+            try
+            {
+                // Back up before deleting
+                string backup = Path.Combine(_logsDir, "known_devices_backup_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt");
+                File.Copy(_knownDevicesFile, backup, true);
+                File.Delete(_knownDevicesFile);
+                AppendOutput("[" + Now() + "] Device history cleared. Backup saved: " + backup);
+                MessageBox.Show(ParentForm, "Device history cleared.\r\nBackup saved to logs folder.", AppName, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ParentForm, "Failed to clear device history:\r\n" + ex.Message, AppName, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
 
         private void OpenNetworkSettings()
         {
