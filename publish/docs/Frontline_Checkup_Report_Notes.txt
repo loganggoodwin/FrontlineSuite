@@ -19,3 +19,9 @@ Suggested Use
 4. Save or open the generated HTML report.
 5. Continue with Security Scan, Network Shield, System Health, and other tools.
 6. Keep final logs in the local logs folder for service records.
+
+
+Version 4.4.1 note:
+- Microsoft Defender disabled does not automatically mean the computer has no protection.
+- The report now checks Windows Security Center for installed antivirus products and uses Needs Review wording when third-party antivirus may be active.
+- The primary IPv4 selection now prefers the adapter with a gateway or DNS and deprioritizes likely virtual adapters.

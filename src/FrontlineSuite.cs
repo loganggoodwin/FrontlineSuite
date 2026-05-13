@@ -108,7 +108,7 @@ namespace FrontlineSuite
     internal sealed class MainForm : Form
     {
         private const string AppName    = "Frontline Suite";
-        private const string AppVersion = "4.4.0";
+        private const string AppVersion = "4.4.1";
 
         private readonly Color _bg     = Color.FromArgb(10, 12, 16);
         private readonly Color _panel  = Color.FromArgb(17, 21, 32);
@@ -543,14 +543,14 @@ namespace FrontlineSuite
             workflow.Dock = DockStyle.Fill;
             workflow.ForeColor = _text;
             workflow.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular);
-            workflow.Text = "Recommended workflow\r\n\r\n1. Generate a Frontline Checkup Report before making changes.\r\n2. Run Defender status and a Quick Scan.\r\n3. Review DNS settings and scan the local network.\r\n4. Run System Health before changing Windows settings.\r\n5. Export logs after the work is complete.\r\n\r\nThis layout keeps the customer-facing path simple while the advanced tabs remain available for deeper troubleshooting.";
+            workflow.Text = "Recommended workflow\r\n\r\n1. Generate a Frontline Checkup Report before making changes.\r\n2. Verify the active antivirus product, then run a scan.\r\n3. Review DNS settings and scan the local network.\r\n4. Run System Health before changing Windows settings.\r\n5. Export logs after the work is complete.\r\n\r\nThis layout keeps the customer-facing path simple while the advanced tabs remain available for deeper troubleshooting.";
             wrap.Controls.Add(workflow, 0, 0);
 
             Label notes = new Label();
             notes.Dock = DockStyle.Fill;
             notes.ForeColor = _muted;
             notes.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
-            notes.Text = "Professional polish added in v4.4.0\r\n\r\n• Customer-facing Checkup Report tab\r\n• TXT and HTML report exports\r\n• Named tab indexes for dashboard actions\r\n• Dashboard-first workflow retained\r\n• Better customer handoff documentation\r\n• Clear admin-mode indicator";
+            notes.Text = "Professional polish added in v4.4.1\r\n\r\n• Antivirus-aware report wording\r\n• Third-party AV detection attempt\r\n• Better primary IPv4 selection\r\n• Dashboard-first workflow retained\r\n• Named tab indexes for dashboard actions\r\n• Clear admin-mode indicator";
             wrap.Controls.Add(notes, 1, 0);
             return wrap;
         }
@@ -894,14 +894,20 @@ namespace FrontlineSuite
             string dns = GetDnsSummary();
             string adapterSummary = GetAdapterSummary();
             string defender = GetDefenderSummary();
+            string avProducts = GetAntivirusProductsSummary();
+            string antivirusAssessment = GetAntivirusAssessment(defender, avProducts);
+            bool defenderDisabled = DefenderLooksDisabled(defender);
+            bool thirdPartyAvDetected = HasThirdPartyAntivirus(avProducts);
             string firewall = GetFirewallSummary();
             string logInventory = GetLogInventory();
 
-            if (!admin) recommendations.Add("Rerun Frontline Suite as Administrator before performing DNS, firewall, Defender, DISM, SFC, startup, or hosts-file changes.");
+            if (!admin) recommendations.Add("Rerun Frontline Suite as Administrator before performing DNS, firewall, antivirus, DISM, SFC, startup, or hosts-file changes.");
             if (pendingReboot) recommendations.Add("A reboot appears to be pending. Restart the computer after customer approval before continuing deeper maintenance.");
             if (freeGb >= 0 && freeGb < 20) recommendations.Add("System drive free space is below 20 GB. Review downloads, temp files, old installers, and restore points before major updates.");
-            if (defender.IndexOf("RealTimeProtectionEnabled : False", StringComparison.OrdinalIgnoreCase) >= 0 || defender.IndexOf("RealTimeProtectionEnabled: False", StringComparison.OrdinalIgnoreCase) >= 0)
-                recommendations.Add("Microsoft Defender real-time protection appears disabled. Verify the active antivirus configuration.");
+            if (defenderDisabled && thirdPartyAvDetected)
+                recommendations.Add("Microsoft Defender appears disabled because another antivirus product may be in use. Verify the third-party antivirus is active, updated, and running normally before completing maintenance.");
+            else if (defenderDisabled)
+                recommendations.Add("Antivirus protection needs review. Microsoft Defender appears disabled or unavailable; verify whether another antivirus product is installed and active.");
             if (recommendations.Count == 0) recommendations.Add("No urgent baseline issue was detected by the lightweight checkup. Continue with the normal scan, network review, and customer-approved cleanup workflow.");
 
             sb.AppendLine("============================================================");
@@ -945,7 +951,13 @@ namespace FrontlineSuite
 
             sb.AppendLine("4. SECURITY SNAPSHOT");
             sb.AppendLine("------------------------------------------------------------");
-            sb.AppendLine("Microsoft Defender:");
+            sb.AppendLine("Antivirus Protection:");
+            sb.AppendLine(antivirusAssessment);
+            sb.AppendLine();
+            sb.AppendLine("Installed Antivirus Products:");
+            sb.AppendLine(avProducts.Trim().Length == 0 ? "No antivirus product inventory returned." : avProducts.Trim());
+            sb.AppendLine();
+            sb.AppendLine("Microsoft Defender Details:");
             sb.AppendLine(defender.Trim().Length == 0 ? "No Defender status returned." : defender.Trim());
             sb.AppendLine();
             sb.AppendLine("Windows Firewall:");
@@ -966,7 +978,7 @@ namespace FrontlineSuite
             sb.AppendLine("7. SUGGESTED FRONTLINE WORKFLOW");
             sb.AppendLine("------------------------------------------------------------");
             sb.AppendLine("1. Save this report as the before-work baseline.");
-            sb.AppendLine("2. Run Defender Status and Quick Scan from the Security Scan tab.");
+            sb.AppendLine("2. Verify active antivirus protection, then run a Defender or third-party antivirus scan.");
             sb.AppendLine("3. Review DNS settings and local devices from the Network Shield tab.");
             sb.AppendLine("4. Run System Health before applying Windows repair actions.");
             sb.AppendLine("5. Save final logs and provide the customer with the report and completed-work notes.");
@@ -1032,19 +1044,76 @@ namespace FrontlineSuite
         {
             try
             {
+                string bestIp = "";
+                int bestScore = -9999;
+
                 foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
                 {
                     if (nic.OperationalStatus != OperationalStatus.Up) continue;
                     if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
-                    foreach (UnicastIPAddressInformation uni in nic.GetIPProperties().UnicastAddresses)
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
+
+                    IPInterfaceProperties props = nic.GetIPProperties();
+                    bool hasGateway = false;
+                    foreach (GatewayIPAddressInformation gw in props.GatewayAddresses)
                     {
-                        if (uni.Address.AddressFamily == AddressFamily.InterNetwork)
-                            return uni.Address.ToString();
+                        if (gw.Address != null && gw.Address.AddressFamily == AddressFamily.InterNetwork && !gw.Address.Equals(IPAddress.Any))
+                        {
+                            hasGateway = true;
+                            break;
+                        }
+                    }
+
+                    bool hasDns = false;
+                    foreach (IPAddress dns in props.DnsAddresses)
+                    {
+                        if (dns.AddressFamily == AddressFamily.InterNetwork)
+                        {
+                            hasDns = true;
+                            break;
+                        }
+                    }
+
+                    foreach (UnicastIPAddressInformation uni in props.UnicastAddresses)
+                    {
+                        if (uni.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                        string ip = uni.Address.ToString();
+                        if (ip.StartsWith("127.")) continue;
+                        if (ip.StartsWith("169.254.")) continue;
+
+                        int score = 0;
+                        if (hasGateway) score += 100;
+                        if (hasDns) score += 25;
+                        if (nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet || nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211) score += 20;
+                        if (IsLikelyVirtualAdapter(nic)) score -= 50;
+                        if (IsPrivateIPv4(ip)) score += 5;
+
+                        if (score > bestScore)
+                        {
+                            bestScore = score;
+                            bestIp = ip;
+                        }
                     }
                 }
+
+                if (!String.IsNullOrWhiteSpace(bestIp)) return bestIp;
             }
             catch { }
             return "Not found";
+        }
+
+        private bool IsLikelyVirtualAdapter(NetworkInterface nic)
+        {
+            string text = ((nic.Name ?? "") + " " + (nic.Description ?? "")).ToLowerInvariant();
+            return text.IndexOf("virtualbox") >= 0 || text.IndexOf("vmware") >= 0 || text.IndexOf("hyper-v") >= 0 ||
+                   text.IndexOf("virtual") >= 0 || text.IndexOf("docker") >= 0 || text.IndexOf("wsl") >= 0 ||
+                   text.IndexOf("host-only") >= 0 || text.IndexOf("loopback") >= 0;
+        }
+
+        private bool IsPrivateIPv4(string ip)
+        {
+            return ip.StartsWith("10.") || ip.StartsWith("192.168.") ||
+                   Regex.IsMatch(ip, @"^172\.(1[6-9]|2[0-9]|3[0-1])\.");
         }
 
         private string GetAdapterSummary()
@@ -1098,6 +1167,77 @@ namespace FrontlineSuite
             if (result.IndexOf("Get-MpComputerStatus", StringComparison.OrdinalIgnoreCase) >= 0 && result.IndexOf("not recognized", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "Microsoft Defender PowerShell cmdlets were not available on this system.";
             return result;
+        }
+
+        private string GetAntivirusProductsSummary()
+        {
+            string command = "Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct | Select-Object displayName,productState,pathToSignedProductExe | Format-List";
+            string result = RunPowerShell(command, 15000);
+
+            if (String.IsNullOrWhiteSpace(result)) return "No antivirus products were returned by Windows Security Center.";
+            if (result.IndexOf("Invalid namespace", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                result.IndexOf("not found", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                result.IndexOf("Access is denied", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Windows Security Center antivirus inventory was unavailable. Verify antivirus status manually." + Environment.NewLine + result.Trim();
+
+            return result.Trim();
+        }
+
+        private string GetAntivirusAssessment(string defender, string avProducts)
+        {
+            bool defenderDisabled = DefenderLooksDisabled(defender);
+            bool thirdPartyAv = HasThirdPartyAntivirus(avProducts);
+
+            if (defenderDisabled && thirdPartyAv)
+                return "Antivirus Protection: Needs Review" + Environment.NewLine +
+                       "Microsoft Defender appears to be disabled or unavailable, which is common when a third-party antivirus product is installed. Verify that the third-party antivirus is active, updated, and running normally before completing maintenance.";
+
+            if (defenderDisabled)
+                return "Antivirus Protection: Needs Review" + Environment.NewLine +
+                       "Microsoft Defender appears to be disabled or unavailable. This may be normal if another antivirus product is installed, but it should be verified before completing maintenance.";
+
+            if (defender.IndexOf("RealTimeProtectionEnabled", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Antivirus Protection: Baseline OK" + Environment.NewLine +
+                       "Microsoft Defender real-time protection appears enabled based on the local status check.";
+
+            return "Antivirus Protection: Needs Review" + Environment.NewLine +
+                   "The app could not clearly confirm antivirus protection from the local checks. Verify the active antivirus product manually.";
+        }
+
+        private bool DefenderLooksDisabled(string defender)
+        {
+            if (String.IsNullOrWhiteSpace(defender)) return true;
+            return defender.IndexOf("AMServiceEnabled              : False", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   defender.IndexOf("AMServiceEnabled: False", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   defender.IndexOf("AntivirusEnabled              : False", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   defender.IndexOf("AntivirusEnabled: False", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   defender.IndexOf("RealTimeProtectionEnabled     : False", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   defender.IndexOf("RealTimeProtectionEnabled : False", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   defender.IndexOf("RealTimeProtectionEnabled: False", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   defender.IndexOf("cmdlets were not available", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private bool HasThirdPartyAntivirus(string avProducts)
+        {
+            if (String.IsNullOrWhiteSpace(avProducts)) return false;
+            if (avProducts.IndexOf("No antivirus products", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+            if (avProducts.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0) return false;
+
+            string[] lines = avProducts.Split(new string[] { "\r\n", "\n" }, StringSplitOptions.None);
+            foreach (string raw in lines)
+            {
+                string line = raw.Trim();
+                if (line.IndexOf("displayName", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                int colon = line.IndexOf(':');
+                string name = colon >= 0 ? line.Substring(colon + 1).Trim() : line;
+                if (String.IsNullOrWhiteSpace(name)) continue;
+                if (name.IndexOf("Microsoft Defender", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                if (name.IndexOf("Windows Defender", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                if (name.IndexOf("Microsoft Security Essentials", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+                return true;
+            }
+
+            return false;
         }
 
         private string GetFirewallSummary()

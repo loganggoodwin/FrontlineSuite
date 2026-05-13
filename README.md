@@ -2,9 +2,9 @@
 
 **Local Security, Network, and System Maintenance Toolkit**  
 Frontline Tech Consulting, LLC  
-Version **4.4.0**
+Version **4.4.1**
 
-Frontline Suite is a Windows desktop utility for local security checks, Microsoft Defender actions, DNS hardening, local network review, firewall rule review, Windows maintenance, startup review, event log review, junk cleanup, hosts file management, and customer-facing checkup reporting.
+Frontline Suite is a Windows desktop utility for local security checks, Microsoft Defender actions, third-party antivirus awareness, DNS hardening, local network review, firewall rule review, Windows maintenance, startup review, event log review, junk cleanup, hosts file management, and customer-facing checkup reporting.
 
 This package is designed as a **no-SDK Windows build**. It uses the .NET Framework compiler that is already included with Windows, so you do not need to install the full .NET SDK.
 
@@ -14,20 +14,19 @@ This package is designed as a **no-SDK Windows build**. It uses the .NET Framewo
 
 ![Frontline Suite dashboard](docs/screenshots/frontline_suite_dashboard_v4_3.png)
 
-The dashboard gives users a quick first look at the app status, admin mode, local IP, system drive space, recent logs, DNS actions, firewall review, and recommended workflow. Version 4.4.0 keeps this dashboard-first layout and adds a dedicated **Checkup Report** tab.
+The dashboard gives users a quick first look at the app status, admin mode, local IP, system drive space, recent logs, DNS actions, firewall review, and recommended workflow. Version 4.4.1 keeps this dashboard-first layout and improves the Checkup Report so third-party antivirus setups are treated as **Needs Review** instead of a simple Defender failure.
 
 ---
 
-## What's new in 4.4.0
+## What's new in 4.4.1
 
 | Change | Why it matters |
 |---|---|
-| **New Checkup Report tab** | Creates a customer-facing baseline report before any repair or cleanup work begins. |
-| **TXT and HTML report export** | Saves a technician-friendly text report and a cleaner customer-facing HTML report in the local logs folder. |
-| **Dashboard Create Report button** | Makes the report workflow part of the first screen instead of hiding it in an advanced tab. |
-| **Named tab indexes added** | Dashboard quick-action buttons no longer rely on fragile hardcoded tab numbers. |
-| **Report recommendations** | Adds simple next-action guidance for admin mode, pending reboot, low disk space, and Defender status. |
-| **Version numbers aligned** | README and source code now both show version 4.4.0. |
+| **Antivirus-aware report wording** | If Microsoft Defender is disabled, the report now explains that this may be normal when a third-party antivirus product is installed. |
+| **Third-party AV inventory attempt** | The report queries Windows Security Center for installed antivirus products and lists what Windows reports locally. |
+| **Better recommendations** | Defender-disabled systems now receive a verification recommendation instead of wording that implies the system is automatically unprotected. |
+| **Improved primary IP selection** | The primary IPv4 logic now prefers adapters with a gateway/DNS and deprioritizes likely virtual adapters. |
+| **Version numbers aligned** | README and source code now both show version 4.4.1. |
 
 ---
 
@@ -36,7 +35,7 @@ The dashboard gives users a quick first look at the app status, admin mode, loca
 | Tab | What it does |
 |-----|-------------|
 | **Dashboard** | Quick status cards for admin mode, local IP, system drive free space, recent logs, pending reboot, DNS, firewall, and refresh time. Includes quick-action buttons for common workflows. |
-| **Checkup Report** | Generates a branded Frontline Checkup Report with system, storage, network, DNS, Defender, firewall, local logs, and recommended next-action sections. Saves both TXT and HTML versions. |
+| **Checkup Report** | Generates a branded Frontline Checkup Report with system, storage, network, DNS, antivirus/Defender review, firewall, local logs, and recommended next-action sections. Saves both TXT and HTML versions. |
 | **Security Scan** | Microsoft Defender status, signature update, Quick Scan, Full Scan, Custom Folder Scan, DISM RestoreHealth, SFC /scannow, Recommended Sweep, Protection History, command guide, and logs folder. |
 | **Network Shield** | DNS management, local /24 network scan, device inventory with new-device detection, CSV export, TXT export, and local network review. |
 | **System Health** | Disk space, RAM, CPU, OS information, uptime, battery state, pending reboot check, and recent Event Log errors. |
@@ -66,7 +65,9 @@ The report includes:
 - Windows version, architecture, uptime, and pending reboot status
 - System drive free space
 - Primary IPv4 address, active adapters, and DNS servers
-- Microsoft Defender summary
+- Antivirus protection assessment
+- Installed antivirus products reported by Windows Security Center
+- Microsoft Defender details
 - Windows Firewall profile summary
 - Local log inventory
 - Recommended next actions
@@ -140,7 +141,7 @@ FrontlineSuite\
   BUILD_No_DotNet_SDK.cmd
   INSTALL.cmd
   README.md
-  DESIGN_NOTES_v4_4.md
+  DESIGN_NOTES_v4_4_1.md
 ```
 
 ---
