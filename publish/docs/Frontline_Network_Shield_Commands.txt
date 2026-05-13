@@ -1,0 +1,27 @@
+Frontline Network Shield - Command Reference
+
+DNS commands used by the app:
+
+AdGuard DNS:
+netsh interface ipv4 set dnsservers name="<adapter>" static 94.140.14.14 primary validate=no
+netsh interface ipv4 add dnsservers name="<adapter>" address=94.140.15.15 index=2 validate=no
+
+Cloudflare Malware DNS:
+netsh interface ipv4 set dnsservers name="<adapter>" static 1.1.1.2 primary validate=no
+netsh interface ipv4 add dnsservers name="<adapter>" address=1.0.0.2 index=2 validate=no
+
+Quad9 Security DNS:
+netsh interface ipv4 set dnsservers name="<adapter>" static 9.9.9.9 primary validate=no
+netsh interface ipv4 add dnsservers name="<adapter>" address=149.112.112.112 index=2 validate=no
+
+Reset DNS to DHCP:
+netsh interface ipv4 set dnsservers name="<adapter>" source=dhcp
+
+Local network scan:
+- Pings local IPv4 hosts in the selected adapter's local range.
+- Limits broad networks to a local /24-style scan for speed and safety.
+- Reads arp -a for MAC addresses.
+- Attempts hostname resolution.
+- Checks TCP ports 22, 80, 443, 445, and 3389.
+
+Only scan networks you own or have permission to assess.

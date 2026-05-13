@@ -93,7 +93,7 @@ namespace FrontlineSuite
     internal sealed class MainForm : Form
     {
         private const string AppName    = "Frontline Suite";
-        private const string AppVersion = "4.0.0";
+        private const string AppVersion = "4.1.0";
 
         private readonly Color _bg     = Color.FromArgb(10, 12, 16);
         private readonly Color _panel  = Color.FromArgb(17, 21, 32);
@@ -714,6 +714,7 @@ namespace FrontlineSuite
         private readonly string _knownDevicesFile;
 
         private ComboBox _adapterCombo;
+        private ComboBox _cidrCombo;
         private TextBox _outputBox;
         private Label _statusLabel;
         private Label _dnsLabel;
@@ -784,11 +785,13 @@ namespace FrontlineSuite
             panel.Dock = DockStyle.Fill;
             panel.BackColor = _panel2;
             panel.Padding = new Padding(10, 8, 10, 8);
-            panel.ColumnCount = 4;
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+            panel.ColumnCount = 6;
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135)); // "Network Adapter" label
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40));   // adapter combo
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));  // "Scan Range" label
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110)); // CIDR combo
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60));   // DNS label
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150)); // Refresh button
 
             Label lbl = new Label { Text = "Network Adapter", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold) };
             panel.Controls.Add(lbl, 0, 0);
@@ -797,12 +800,33 @@ namespace FrontlineSuite
             _adapterCombo.SelectedIndexChanged += delegate { UpdateDnsDisplay(); };
             panel.Controls.Add(_adapterCombo, 1, 0);
 
+            Label cidrLbl = new Label { Text = "Scan Range:", ForeColor = _muted, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Segoe UI Semibold", 9F, FontStyle.Bold) };
+            panel.Controls.Add(cidrLbl, 2, 0);
+
+            _cidrCombo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, BackColor = Color.FromArgb(5, 7, 9), ForeColor = _text, Font = new Font("Consolas", 9F) };
+            _cidrCombo.Items.AddRange(new object[] {
+                "/24  (254 hosts)",
+                "/23  (510 hosts)",
+                "/22  (1022 hosts)",
+                "/26  (62 hosts)",
+                "/27  (30 hosts)",
+                "/28  (14 hosts)"
+            });
+            _cidrCombo.SelectedIndex = 0;
+            new ToolTip { InitialDelay = 250 }.SetToolTip(_cidrCombo,
+                "Select the subnet size to scan.\r\n" +
+                "/24 = standard home/small office (192.168.x.0–254)\r\n" +
+                "/23 = two /24 blocks combined\r\n" +
+                "/22 = four /24 blocks (larger offices)\r\n" +
+                "/26–/28 = small segments or VLANs");
+            panel.Controls.Add(_cidrCombo, 3, 0);
+
             _dnsLabel = new Label { Text = "Current DNS: Not checked yet", ForeColor = _termGreen, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Font = new Font("Consolas", 9F) };
-            panel.Controls.Add(_dnsLabel, 2, 0);
+            panel.Controls.Add(_dnsLabel, 4, 0);
 
             Button refresh = SmallBtn("Refresh Adapters");
             refresh.Click += delegate { RefreshAdapters(); };
-            panel.Controls.Add(refresh, 3, 0);
+            panel.Controls.Add(refresh, 5, 0);
 
             return panel;
         }
@@ -1037,9 +1061,25 @@ namespace FrontlineSuite
 
         private List<DeviceRow> ScanNetwork(AdapterItem adapter)
         {
+            // Parse the selected CIDR prefix from the combo (e.g. "/24  (254 hosts)" -> 24)
+            int cidrPrefix = 24;
+            try
+            {
+                string cidrText = "";
+                if (_cidrCombo.InvokeRequired)
+                    _cidrCombo.Invoke(new MethodInvoker(delegate() { cidrText = _cidrCombo.SelectedItem != null ? _cidrCombo.SelectedItem.ToString() : "/24"; }));
+                else
+                    cidrText = _cidrCombo.SelectedItem != null ? _cidrCombo.SelectedItem.ToString() : "/24";
+                // Extract the number after the slash
+                int slash = cidrText.IndexOf('/');
+                int space = cidrText.IndexOf(' ', slash);
+                cidrPrefix = int.Parse(space > slash ? cidrText.Substring(slash + 1, space - slash - 1) : cidrText.Substring(slash + 1));
+            }
+            catch { cidrPrefix = 24; }
+
             AppendOutput("[" + Now() + "] Starting scan on: " + adapter.Name);
             AppendOutput("[" + Now() + "] Local IP: " + adapter.IpAddress + " | Mask: " + adapter.SubnetMask);
-            List<IPAddress> hosts = BuildHostList(adapter.IpAddress, adapter.SubnetMask, out _lastScanNote);
+            List<IPAddress> hosts = BuildHostList(adapter.IpAddress, adapter.SubnetMask, cidrPrefix, out _lastScanNote);
             AppendOutput("[" + Now() + "] " + _lastScanNote);
             AppendOutput("[" + Now() + "] Checking " + hosts.Count + " address(es)...");
 
@@ -1083,18 +1123,28 @@ namespace FrontlineSuite
             return rows;
         }
 
-        private static List<IPAddress> BuildHostList(IPAddress localIp, IPAddress subnetMask, out string scanNote)
+        private static List<IPAddress> BuildHostList(IPAddress localIp, IPAddress subnetMask, int requestedPrefix, out string scanNote)
         {
-            uint ip = AddressToUInt32(localIp);
+            uint ip   = AddressToUInt32(localIp);
             uint mask = AddressToUInt32(subnetMask);
-            int prefix = MaskToPrefix(mask);
-            if (prefix < 24) { mask = PrefixToMask(24); prefix = 24; }
-            uint network = ip & mask;
+
+            // Use the requested CIDR prefix, but never go broader than /22 (safety cap)
+            int prefix = requestedPrefix;
+            if (prefix < 22) prefix = 22;
+            if (prefix > 30) prefix = 30;
+
+            mask = PrefixToMask(prefix);
+            uint network   = ip & mask;
             uint broadcast = network | ~mask;
+
             List<IPAddress> hosts = new List<IPAddress>();
             if (broadcast <= network + 1) { scanNote = "No usable local host range available."; return hosts; }
+
             for (uint cur = network + 1; cur < broadcast; cur++) hosts.Add(UInt32ToAddress(cur));
-            scanNote = "Scanning " + UInt32ToAddress(network) + "/" + prefix + ". Only local range.";
+
+            int hostCount = (int)(broadcast - network - 1);
+            scanNote = String.Format("Scanning {0}/{1}  ({2} addresses)  —  only scan networks you own or have permission to assess.",
+                UInt32ToAddress(network), prefix, hostCount);
             return hosts;
         }
 
@@ -2526,11 +2576,13 @@ namespace FrontlineSuite
                     {
                         SearchOption opt = recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
                         string[] files = Directory.GetFiles(path, "*", opt);
-                        long sectionSize = 0; int sectionFiles = 0; int skipped = 0;
+                        long sectionSize = 0; int sectionFiles = 0;
 
                         // For thumbnail cache, only target thumbcache_*.db files
                         if (label.Contains("Thumbnail"))
                             files = Array.FindAll(files, f => Path.GetFileName(f).StartsWith("thumbcache_", StringComparison.OrdinalIgnoreCase) && f.EndsWith(".db", StringComparison.OrdinalIgnoreCase));
+
+                        int skipped = 0; int accessDenied = 0;
 
                         foreach (string file in files)
                         {
@@ -2545,12 +2597,28 @@ namespace FrontlineSuite
                                     log.AppendLine("  DEL " + file);
                                 }
                             }
-                            catch { skipped++; }
+                            catch (UnauthorizedAccessException)
+                            {
+                                // System/protected file — count separately, don't log path (could be sensitive)
+                                accessDenied++;
+                                log.AppendLine("  SKIP (access denied): " + Path.GetFileName(file));
+                            }
+                            catch (IOException)
+                            {
+                                // File in use by another process
+                                skipped++;
+                            }
+                            catch
+                            {
+                                skipped++;
+                            }
                         }
 
                         totalSize  += sectionSize;
                         totalFiles += sectionFiles;
-                        string summary = String.Format("  {0} file(s), {1:F2} MB{2}", sectionFiles, sectionSize / 1048576.0, skipped > 0 ? " (" + skipped + " skipped/in use)" : "");
+                        string summary = String.Format("  {0} file(s), {1:F2} MB", sectionFiles, sectionSize / 1048576.0);
+                        if (skipped > 0)     summary += "  (" + skipped + " in use/skipped)";
+                        if (accessDenied > 0) summary += "  (" + accessDenied + " access denied)";
                         AppendOutput(summary);
                         log.AppendLine(summary);
                     }
