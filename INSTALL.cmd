@@ -52,6 +52,7 @@ copy /Y "%ROOT%assets\frontline_logo.ico"                         "%INSTALLDIR%\
 copy /Y "%ROOT%assets\frontline_logo.png"                         "%INSTALLDIR%\assets\"   >nul
 copy /Y "%ROOT%docs\Frontline_Malware_Scan_Commands.txt"          "%INSTALLDIR%\docs\"     >nul 2>&1
 copy /Y "%ROOT%docs\Frontline_Network_Shield_Commands.txt"        "%INSTALLDIR%\docs\"     >nul 2>&1
+copy /Y "%ROOT%docs\Frontline_Checkup_Report_Notes.txt"           "%INSTALLDIR%\docs\"     >nul 2>&1
 
 if errorlevel 1 (
     echo.

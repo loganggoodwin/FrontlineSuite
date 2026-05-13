@@ -1,0 +1,21 @@
+Frontline Checkup Report Notes
+==============================
+
+Purpose
+-------
+The Checkup Report is a local maintenance snapshot for before-work documentation and customer handoff.
+
+It is designed to help a technician show what was checked before making changes, including system status, storage, network/DNS, Defender, firewall, local log inventory, and recommended next actions.
+
+Important Limitation
+--------------------
+This report does not prove compliance, guarantee that malware is absent, or replace a full security assessment.
+
+Suggested Use
+-------------
+1. Run Frontline Suite as Administrator when possible.
+2. Open the Checkup Report tab.
+3. Click Run Checkup Report.
+4. Save or open the generated HTML report.
+5. Continue with Security Scan, Network Shield, System Health, and other tools.
+6. Keep final logs in the local logs folder for service records.

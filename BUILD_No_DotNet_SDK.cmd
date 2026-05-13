@@ -58,6 +58,7 @@ copy /Y "%ROOT%assets\frontline_logo.ico"                  "%OUTDIR%\assets\" >n
 copy /Y "%ROOT%assets\frontline_logo.png"                  "%OUTDIR%\assets\" >nul
 copy /Y "%ROOT%docs\Frontline_Malware_Scan_Commands.txt"   "%OUTDIR%\docs\"   >nul 2>&1
 copy /Y "%ROOT%docs\Frontline_Network_Shield_Commands.txt" "%OUTDIR%\docs\"   >nul 2>&1
+copy /Y "%ROOT%docs\Frontline_Checkup_Report_Notes.txt"    "%OUTDIR%\docs\"   >nul 2>&1
 
 echo.
 echo Build complete:

@@ -86,6 +86,21 @@ namespace FrontlineSuite
         public string RiskNotes = "";
     }
 
+    internal enum SuiteTabIndex
+    {
+        Dashboard = 0,
+        CheckupReport = 1,
+        SecurityScan = 2,
+        NetworkShield = 3,
+        SystemHealth = 4,
+        StartupManager = 5,
+        WindowsUpdate = 6,
+        EventLog = 7,
+        JunkCleaner = 8,
+        HostsFile = 9,
+        Firewall = 10
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Main window – tab container
     // ─────────────────────────────────────────────────────────────────────────
@@ -93,7 +108,7 @@ namespace FrontlineSuite
     internal sealed class MainForm : Form
     {
         private const string AppName    = "Frontline Suite";
-        private const string AppVersion = "4.3.0";
+        private const string AppVersion = "4.4.0";
 
         private readonly Color _bg     = Color.FromArgb(10, 12, 16);
         private readonly Color _panel  = Color.FromArgb(17, 21, 32);
@@ -165,7 +180,12 @@ namespace FrontlineSuite
             TabPage dashboardPage = new TabPage("  Dashboard");
             dashboardPage.BackColor = _bg;
             dashboardPage.Padding = new Padding(0);
-            dashboardPage.Controls.Add(new DashboardPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted, delegate(int index) { _tabs.SelectedIndex = index; }));
+            dashboardPage.Controls.Add(new DashboardPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted, delegate(SuiteTabIndex tab) { _tabs.SelectedIndex = (int)tab; }));
+
+            TabPage checkupPage = new TabPage("  Checkup Report");
+            checkupPage.BackColor = _bg;
+            checkupPage.Padding = new Padding(0);
+            checkupPage.Controls.Add(new CheckupReportPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
 
             TabPage scannerPage = new TabPage("  Security Scan");
             scannerPage.BackColor = _bg;
@@ -213,6 +233,7 @@ namespace FrontlineSuite
             firewallPage.Controls.Add(new FirewallPanel(_logsDir, _bg, _panel, _panel2, _orange, _blue, _text, _muted));
 
             _tabs.TabPages.Add(dashboardPage);
+            _tabs.TabPages.Add(checkupPage);
             _tabs.TabPages.Add(scannerPage);
             _tabs.TabPages.Add(shieldPage);
             _tabs.TabPages.Add(healthPage);
@@ -318,12 +339,12 @@ namespace FrontlineSuite
     {
         private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
         private readonly string _logsDir;
-        private readonly Action<int> _openTab;
+        private readonly Action<SuiteTabIndex> _openTab;
         private readonly List<Label> _dynamicLabels = new List<Label>();
         private System.Windows.Forms.Timer _refreshTimer;
 
         public DashboardPanel(string logsDir, Color bg, Color panel, Color panel2,
-            Color orange, Color blue, Color text, Color muted, Action<int> openTab)
+            Color orange, Color blue, Color text, Color muted, Action<SuiteTabIndex> openTab)
         {
             _logsDir = logsDir;
             _bg = bg; _panel = panel; _panel2 = panel2;
@@ -389,21 +410,22 @@ namespace FrontlineSuite
             subtitle.AutoSize = false;
             subtitle.Location = new Point(24, 62);
             subtitle.Size = new Size(720, 44);
-            subtitle.Text = "Quick view of this PC, recent logs, and the safest next actions. Start with a scan, review your network, then export logs for customer documentation.";
+            subtitle.Text = "Quick view of this PC, recent logs, and the safest next actions. Start with a checkup report, run a scan, review the network, then export logs for customer documentation.";
             subtitle.ForeColor = _muted;
             subtitle.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular);
             hero.Controls.Add(subtitle);
 
             FlowLayoutPanel actions = new FlowLayoutPanel();
             actions.Location = new Point(20, 112);
-            actions.Size = new Size(840, 44);
+            actions.Size = new Size(1040, 44);
             actions.BackColor = _panel;
             actions.WrapContents = false;
             hero.Controls.Add(actions);
 
-            actions.Controls.Add(ActionButton("Start Security Scan", delegate { _openTab(1); }));
-            actions.Controls.Add(ActionButton("Review Network", delegate { _openTab(2); }));
-            actions.Controls.Add(ActionButton("System Health", delegate { _openTab(3); }));
+            actions.Controls.Add(ActionButton("Create Report", delegate { _openTab(SuiteTabIndex.CheckupReport); }));
+            actions.Controls.Add(ActionButton("Start Security Scan", delegate { _openTab(SuiteTabIndex.SecurityScan); }));
+            actions.Controls.Add(ActionButton("Review Network", delegate { _openTab(SuiteTabIndex.NetworkShield); }));
+            actions.Controls.Add(ActionButton("System Health", delegate { _openTab(SuiteTabIndex.SystemHealth); }));
             actions.Controls.Add(ActionButton("Open Logs", delegate { OpenLogsFolder(); }));
 
             Label mode = new Label();
@@ -521,14 +543,14 @@ namespace FrontlineSuite
             workflow.Dock = DockStyle.Fill;
             workflow.ForeColor = _text;
             workflow.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular);
-            workflow.Text = "Recommended workflow\r\n\r\n1. Run Defender status and a Quick Scan.\r\n2. Review DNS settings and scan the local network.\r\n3. Run System Health before changing Windows settings.\r\n4. Export logs after the work is complete.\r\n\r\nThis layout keeps the customer-facing path simple while the advanced tabs remain available for deeper troubleshooting.";
+            workflow.Text = "Recommended workflow\r\n\r\n1. Generate a Frontline Checkup Report before making changes.\r\n2. Run Defender status and a Quick Scan.\r\n3. Review DNS settings and scan the local network.\r\n4. Run System Health before changing Windows settings.\r\n5. Export logs after the work is complete.\r\n\r\nThis layout keeps the customer-facing path simple while the advanced tabs remain available for deeper troubleshooting.";
             wrap.Controls.Add(workflow, 0, 0);
 
             Label notes = new Label();
             notes.Dock = DockStyle.Fill;
             notes.ForeColor = _muted;
             notes.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
-            notes.Text = "Professional polish added in v4.3.0\r\n\r\n• Dashboard-first layout\r\n• Cleaner product wording\r\n• No duplicate Hosts File tab\r\n• Version number aligned with README\r\n• Better customer handoff language\r\n• Clear admin-mode indicator";
+            notes.Text = "Professional polish added in v4.4.0\r\n\r\n• Customer-facing Checkup Report tab\r\n• TXT and HTML report exports\r\n• Named tab indexes for dashboard actions\r\n• Dashboard-first workflow retained\r\n• Better customer handoff documentation\r\n• Clear admin-mode indicator";
             wrap.Controls.Add(notes, 1, 0);
             return wrap;
         }
@@ -627,6 +649,651 @@ namespace FrontlineSuite
             try { return new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator); }
             catch { return false; }
         }
+    }
+
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Frontline Checkup Report tab
+    // ─────────────────────────────────────────────────────────────────────────
+
+    internal sealed class CheckupReportPanel : UserControl
+    {
+        private readonly Color _bg, _panel, _panel2, _orange, _blue, _text, _muted;
+        private readonly string _logsDir;
+        private readonly List<Button> _buttons = new List<Button>();
+        private TextBox _outputBox;
+        private Label _statusLabel;
+        private ProgressBar _progressBar;
+        private bool _isRunning;
+        private string _lastReportText = "";
+        private string _lastReportHtml = "";
+        private string _lastTxtPath = "";
+        private string _lastHtmlPath = "";
+
+        public CheckupReportPanel(string logsDir, Color bg, Color panel, Color panel2,
+            Color orange, Color blue, Color text, Color muted)
+        {
+            _logsDir = logsDir;
+            _bg = bg; _panel = panel; _panel2 = panel2;
+            _orange = orange; _blue = blue; _text = text; _muted = muted;
+
+            Dock = DockStyle.Fill;
+            BackColor = _bg;
+            Build();
+            AppendOutput("Frontline Checkup Report ready.");
+            AppendOutput("Run this before making changes to create a customer-facing baseline report.");
+            AppendOutput("Reports are saved locally in the logs folder as TXT and HTML.");
+        }
+
+        private void Build()
+        {
+            TableLayoutPanel root = new TableLayoutPanel();
+            root.Dock = DockStyle.Fill;
+            root.BackColor = _bg;
+            root.RowCount = 3;
+            root.ColumnCount = 1;
+            root.Padding = new Padding(0, 8, 0, 0);
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 160));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            Controls.Add(root);
+
+            root.Controls.Add(BuildTopPanel(), 0, 0);
+            root.Controls.Add(BuildStatusPanel(), 0, 1);
+            root.Controls.Add(BuildOutputBox(), 0, 2);
+        }
+
+        private Control BuildTopPanel()
+        {
+            Panel top = new Panel();
+            top.Dock = DockStyle.Fill;
+            top.BackColor = _panel;
+            top.Padding = new Padding(18);
+            top.Paint += delegate(object s, PaintEventArgs e)
+            {
+                using (Pen p = new Pen(_orange, 3))
+                    e.Graphics.DrawLine(p, 0, top.Height - 2, top.Width, top.Height - 2);
+            };
+
+            Label title = new Label();
+            title.AutoSize = true;
+            title.Location = new Point(22, 18);
+            title.Text = "Frontline Checkup Report";
+            title.ForeColor = _text;
+            title.Font = new Font("Segoe UI Semibold", 22F, FontStyle.Bold);
+            top.Controls.Add(title);
+
+            Label desc = new Label();
+            desc.AutoSize = false;
+            desc.Location = new Point(24, 62);
+            desc.Size = new Size(900, 42);
+            desc.Text = "Create a branded local report with system, network, security, storage, and recommendation sections. Use it as a before-work baseline or customer handoff note.";
+            desc.ForeColor = _muted;
+            desc.Font = new Font("Segoe UI", 10.5F, FontStyle.Regular);
+            top.Controls.Add(desc);
+
+            FlowLayoutPanel actions = new FlowLayoutPanel();
+            actions.Location = new Point(20, 112);
+            actions.Size = new Size(1080, 44);
+            actions.BackColor = _panel;
+            actions.WrapContents = false;
+            top.Controls.Add(actions);
+
+            actions.Controls.Add(ActionButton("Run Checkup Report", delegate { RunCheckup(); }, 190));
+            actions.Controls.Add(ActionButton("Open HTML Report", delegate { OpenHtmlReport(); }, 175));
+            actions.Controls.Add(ActionButton("Copy Summary", delegate { CopyReport(); }, 145));
+            actions.Controls.Add(ActionButton("Save As...", delegate { SaveAsReport(); }, 130));
+            actions.Controls.Add(ActionButton("Open Reports Folder", delegate { OpenReportsFolder(); }, 180));
+
+            Label mode = new Label();
+            mode.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            mode.AutoSize = false;
+            mode.Size = new Size(330, 70);
+            mode.TextAlign = ContentAlignment.MiddleRight;
+            mode.ForeColor = IsAdministrator() ? _blue : _orange;
+            mode.Font = new Font("Segoe UI Semibold", 11F, FontStyle.Bold);
+            mode.Text = IsAdministrator() ? "ADMIN MODE\r\nFull local checks available" : "STANDARD MODE\r\nSome checks may be limited";
+            top.Controls.Add(mode);
+            top.Resize += delegate { mode.Location = new Point(top.ClientSize.Width - mode.Width - 24, 22); };
+            mode.Location = new Point(760, 22);
+
+            return top;
+        }
+
+        private Button ActionButton(string text, EventHandler click, int width)
+        {
+            Button btn = new Button();
+            btn.Text = text;
+            btn.Size = new Size(width, 36);
+            btn.Margin = new Padding(4, 2, 8, 2);
+            btn.BackColor = _panel2;
+            btn.ForeColor = _text;
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.FlatAppearance.BorderColor = _orange;
+            btn.FlatAppearance.BorderSize = 1;
+            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(32, 39, 56);
+            btn.Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold);
+            btn.Cursor = Cursors.Hand;
+            btn.Click += click;
+            _buttons.Add(btn);
+            return btn;
+        }
+
+        private Control BuildStatusPanel()
+        {
+            TableLayoutPanel p = new TableLayoutPanel();
+            p.Dock = DockStyle.Fill;
+            p.BackColor = _bg;
+            p.ColumnCount = 2;
+            p.Padding = new Padding(0, 8, 0, 4);
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 68));
+            p.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
+
+            _statusLabel = new Label();
+            _statusLabel.Text = "Ready";
+            _statusLabel.ForeColor = _muted;
+            _statusLabel.Dock = DockStyle.Fill;
+            _statusLabel.TextAlign = ContentAlignment.MiddleLeft;
+            p.Controls.Add(_statusLabel, 0, 0);
+
+            _progressBar = new ProgressBar();
+            _progressBar.Dock = DockStyle.Fill;
+            _progressBar.Style = ProgressBarStyle.Blocks;
+            _progressBar.Minimum = 0;
+            _progressBar.Maximum = 100;
+            _progressBar.Value = 0;
+            p.Controls.Add(_progressBar, 1, 0);
+            return p;
+        }
+
+        private Control BuildOutputBox()
+        {
+            _outputBox = new TextBox();
+            _outputBox.Dock = DockStyle.Fill;
+            _outputBox.Multiline = true;
+            _outputBox.ReadOnly = true;
+            _outputBox.ScrollBars = ScrollBars.Both;
+            _outputBox.WordWrap = false;
+            _outputBox.BackColor = Color.FromArgb(5, 7, 9);
+            _outputBox.ForeColor = Color.FromArgb(107, 218, 143);
+            _outputBox.Font = new Font("Consolas", 10F, FontStyle.Regular);
+            _outputBox.BorderStyle = BorderStyle.FixedSingle;
+            return _outputBox;
+        }
+
+        private void RunCheckup()
+        {
+            if (_isRunning)
+            {
+                MessageBox.Show(ParentForm, "A checkup report is already running.", "Frontline Suite", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            _isRunning = true;
+            SetButtonsEnabled(false);
+            SetStatus("Generating Frontline Checkup Report...", true);
+            ClearOutput();
+            AppendOutput("[" + Now() + "] Collecting local system information...");
+
+            Thread worker = new Thread(delegate()
+            {
+                try
+                {
+                    string report = BuildReportText();
+                    string html = BuildReportHtml(report);
+                    Directory.CreateDirectory(_logsDir);
+                    string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                    string txtPath = Path.Combine(_logsDir, "frontline_checkup_report_" + stamp + ".txt");
+                    string htmlPath = Path.Combine(_logsDir, "frontline_checkup_report_" + stamp + ".html");
+                    File.WriteAllText(txtPath, report, Encoding.UTF8);
+                    File.WriteAllText(htmlPath, html, Encoding.UTF8);
+
+                    BeginInvoke(new MethodInvoker(delegate()
+                    {
+                        _lastReportText = report;
+                        _lastReportHtml = html;
+                        _lastTxtPath = txtPath;
+                        _lastHtmlPath = htmlPath;
+                        _outputBox.Text = report;
+                        _outputBox.SelectionStart = 0;
+                        _outputBox.ScrollToCaret();
+                        AppendOutput("");
+                        AppendOutput("[" + Now() + "] TXT saved:  " + txtPath);
+                        AppendOutput("[" + Now() + "] HTML saved: " + htmlPath);
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    AppendOutput("ERROR: " + ex.Message);
+                }
+                finally
+                {
+                    BeginInvoke(new MethodInvoker(delegate()
+                    {
+                        _isRunning = false;
+                        SetButtonsEnabled(true);
+                        SetStatus("Ready", false);
+                    }));
+                }
+            });
+            worker.IsBackground = true;
+            worker.Start();
+        }
+
+        private string BuildReportText()
+        {
+            StringBuilder sb = new StringBuilder();
+            List<string> recommendations = new List<string>();
+            bool admin = IsAdministrator();
+            bool pendingReboot = IsPendingReboot();
+            double freeGb = -1;
+
+            string windows = GetWindowsVersion();
+            string drive = GetSystemDriveInfo(out freeGb);
+            string localIp = GetPrimaryIPv4();
+            string dns = GetDnsSummary();
+            string adapterSummary = GetAdapterSummary();
+            string defender = GetDefenderSummary();
+            string firewall = GetFirewallSummary();
+            string logInventory = GetLogInventory();
+
+            if (!admin) recommendations.Add("Rerun Frontline Suite as Administrator before performing DNS, firewall, Defender, DISM, SFC, startup, or hosts-file changes.");
+            if (pendingReboot) recommendations.Add("A reboot appears to be pending. Restart the computer after customer approval before continuing deeper maintenance.");
+            if (freeGb >= 0 && freeGb < 20) recommendations.Add("System drive free space is below 20 GB. Review downloads, temp files, old installers, and restore points before major updates.");
+            if (defender.IndexOf("RealTimeProtectionEnabled : False", StringComparison.OrdinalIgnoreCase) >= 0 || defender.IndexOf("RealTimeProtectionEnabled: False", StringComparison.OrdinalIgnoreCase) >= 0)
+                recommendations.Add("Microsoft Defender real-time protection appears disabled. Verify the active antivirus configuration.");
+            if (recommendations.Count == 0) recommendations.Add("No urgent baseline issue was detected by the lightweight checkup. Continue with the normal scan, network review, and customer-approved cleanup workflow.");
+
+            sb.AppendLine("============================================================");
+            sb.AppendLine("FRONTLINE CHECKUP REPORT");
+            sb.AppendLine("Frontline Tech Consulting, LLC");
+            sb.AppendLine("============================================================");
+            sb.AppendLine("Generated:       " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            sb.AppendLine("Computer:        " + Environment.MachineName);
+            sb.AppendLine("User:            " + Environment.UserName);
+            sb.AppendLine("Admin Mode:      " + (admin ? "Yes" : "No"));
+            sb.AppendLine("Report Location: Local logs folder only");
+            sb.AppendLine();
+
+            sb.AppendLine("IMPORTANT NOTE");
+            sb.AppendLine("This report is a local maintenance snapshot. It does not prove compliance, guarantee that malware is absent, or replace a full security assessment.");
+            sb.AppendLine();
+
+            sb.AppendLine("1. SYSTEM OVERVIEW");
+            sb.AppendLine("------------------------------------------------------------");
+            sb.AppendLine("Windows:         " + windows);
+            sb.AppendLine("Architecture:    " + (Environment.Is64BitOperatingSystem ? "64-bit OS" : "32-bit OS"));
+            sb.AppendLine("Uptime:          " + GetUptime());
+            sb.AppendLine("Pending Reboot:  " + (pendingReboot ? "Yes" : "No"));
+            sb.AppendLine();
+
+            sb.AppendLine("2. STORAGE SNAPSHOT");
+            sb.AppendLine("------------------------------------------------------------");
+            sb.AppendLine(drive);
+            sb.AppendLine();
+
+            sb.AppendLine("3. NETWORK SNAPSHOT");
+            sb.AppendLine("------------------------------------------------------------");
+            sb.AppendLine("Primary IPv4:    " + localIp);
+            sb.AppendLine();
+            sb.AppendLine("Active Adapters:");
+            sb.AppendLine(adapterSummary);
+            sb.AppendLine();
+            sb.AppendLine("DNS Servers:");
+            sb.AppendLine(dns);
+            sb.AppendLine();
+
+            sb.AppendLine("4. SECURITY SNAPSHOT");
+            sb.AppendLine("------------------------------------------------------------");
+            sb.AppendLine("Microsoft Defender:");
+            sb.AppendLine(defender.Trim().Length == 0 ? "No Defender status returned." : defender.Trim());
+            sb.AppendLine();
+            sb.AppendLine("Windows Firewall:");
+            sb.AppendLine(firewall.Trim().Length == 0 ? "No firewall status returned." : firewall.Trim());
+            sb.AppendLine();
+
+            sb.AppendLine("5. LOCAL LOG INVENTORY");
+            sb.AppendLine("------------------------------------------------------------");
+            sb.AppendLine(logInventory);
+            sb.AppendLine();
+
+            sb.AppendLine("6. RECOMMENDED NEXT ACTIONS");
+            sb.AppendLine("------------------------------------------------------------");
+            for (int i = 0; i < recommendations.Count; i++)
+                sb.AppendLine((i + 1).ToString() + ". " + recommendations[i]);
+            sb.AppendLine();
+
+            sb.AppendLine("7. SUGGESTED FRONTLINE WORKFLOW");
+            sb.AppendLine("------------------------------------------------------------");
+            sb.AppendLine("1. Save this report as the before-work baseline.");
+            sb.AppendLine("2. Run Defender Status and Quick Scan from the Security Scan tab.");
+            sb.AppendLine("3. Review DNS settings and local devices from the Network Shield tab.");
+            sb.AppendLine("4. Run System Health before applying Windows repair actions.");
+            sb.AppendLine("5. Save final logs and provide the customer with the report and completed-work notes.");
+            sb.AppendLine();
+            sb.AppendLine("============================================================");
+            sb.AppendLine("End of Frontline Checkup Report");
+            sb.AppendLine("============================================================");
+            return sb.ToString();
+        }
+
+        private string BuildReportHtml(string textReport)
+        {
+            string encoded = WebUtility.HtmlEncode(textReport).Replace("\r\n", "<br>").Replace("\n", "<br>");
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("<!doctype html>");
+            sb.AppendLine("<html><head><meta charset=\"utf-8\"><title>Frontline Checkup Report</title>");
+            sb.AppendLine("<style>");
+            sb.AppendLine("body{margin:0;background:#0a0c10;color:#e8eaf0;font-family:Segoe UI,Arial,sans-serif;} .wrap{max-width:1100px;margin:0 auto;padding:32px;} .hero{border-top:5px solid #f47820;background:#111520;padding:24px;margin-bottom:18px;} h1{margin:0;color:#fff;font-size:30px;} .sub{color:#94a0b5;margin-top:6px;} pre{white-space:pre-wrap;background:#050709;border:1px solid #263044;border-top:3px solid #29a8e0;padding:22px;line-height:1.45;font-size:14px;} .badge{display:inline-block;margin-top:14px;padding:7px 11px;border:1px solid #f47820;color:#f47820;font-weight:700;} .foot{color:#94a0b5;font-size:12px;margin-top:16px;text-align:right;}");
+            sb.AppendLine("</style></head><body><div class=\"wrap\"><div class=\"hero\"><h1>Frontline Checkup Report</h1><div class=\"sub\">Frontline Tech Consulting, LLC • Local maintenance snapshot</div><div class=\"badge\">Generated Locally</div></div>");
+            sb.AppendLine("<pre>" + encoded + "</pre>");
+            sb.AppendLine("<div class=\"foot\">Use only on systems and networks you own or have permission to assess.</div></div></body></html>");
+            return sb.ToString();
+        }
+
+        private string GetWindowsVersion()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion"))
+                {
+                    if (k != null)
+                    {
+                        string product = Convert.ToString(k.GetValue("ProductName"));
+                        string display = Convert.ToString(k.GetValue("DisplayVersion"));
+                        string build = Convert.ToString(k.GetValue("CurrentBuild"));
+                        string ubr = Convert.ToString(k.GetValue("UBR"));
+                        string result = product;
+                        if (!String.IsNullOrWhiteSpace(display)) result += " " + display;
+                        if (!String.IsNullOrWhiteSpace(build)) result += " (Build " + build + (String.IsNullOrWhiteSpace(ubr) ? "" : "." + ubr) + ")";
+                        if (!String.IsNullOrWhiteSpace(result)) return result;
+                    }
+                }
+            }
+            catch { }
+            return Environment.OSVersion.VersionString;
+        }
+
+        private string GetSystemDriveInfo(out double freeGb)
+        {
+            freeGb = -1;
+            try
+            {
+                DriveInfo d = new DriveInfo(Path.GetPathRoot(Environment.SystemDirectory));
+                double totalGb = d.TotalSize / 1024.0 / 1024.0 / 1024.0;
+                freeGb = d.AvailableFreeSpace / 1024.0 / 1024.0 / 1024.0;
+                double usedPct = totalGb <= 0 ? 0 : ((totalGb - freeGb) / totalGb) * 100.0;
+                return d.Name + "  Free: " + freeGb.ToString("0.0") + " GB of " + totalGb.ToString("0.0") + " GB  Used: " + usedPct.ToString("0") + "%";
+            }
+            catch (Exception ex) { return "System drive information unavailable: " + ex.Message; }
+        }
+
+        private string GetPrimaryIPv4()
+        {
+            try
+            {
+                foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                    foreach (UnicastIPAddressInformation uni in nic.GetIPProperties().UnicastAddresses)
+                    {
+                        if (uni.Address.AddressFamily == AddressFamily.InterNetwork)
+                            return uni.Address.ToString();
+                    }
+                }
+            }
+            catch { }
+            return "Not found";
+        }
+
+        private string GetAdapterSummary()
+        {
+            StringBuilder sb = new StringBuilder();
+            try
+            {
+                foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                    List<string> ips = new List<string>();
+                    foreach (UnicastIPAddressInformation uni in nic.GetIPProperties().UnicastAddresses)
+                    {
+                        if (uni.Address.AddressFamily == AddressFamily.InterNetwork) ips.Add(uni.Address.ToString());
+                    }
+                    sb.AppendLine("- " + nic.Name + " | " + nic.NetworkInterfaceType + " | " + (ips.Count == 0 ? "No IPv4" : String.Join(", ", ips.ToArray())));
+                }
+            }
+            catch (Exception ex) { sb.AppendLine("Adapter check failed: " + ex.Message); }
+            if (sb.Length == 0) sb.AppendLine("No active non-loopback adapter found.");
+            return sb.ToString().TrimEnd();
+        }
+
+        private string GetDnsSummary()
+        {
+            StringBuilder sb = new StringBuilder();
+            try
+            {
+                foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces())
+                {
+                    if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                    List<string> dns = new List<string>();
+                    foreach (IPAddress a in nic.GetIPProperties().DnsAddresses)
+                    {
+                        if (a.AddressFamily == AddressFamily.InterNetwork) dns.Add(a.ToString());
+                    }
+                    if (dns.Count > 0) sb.AppendLine("- " + nic.Name + ": " + String.Join(", ", dns.ToArray()));
+                }
+            }
+            catch (Exception ex) { sb.AppendLine("DNS check failed: " + ex.Message); }
+            if (sb.Length == 0) sb.AppendLine("No IPv4 DNS servers found on active adapters.");
+            return sb.ToString().TrimEnd();
+        }
+
+        private string GetDefenderSummary()
+        {
+            string command = "Get-MpComputerStatus | Select-Object AMServiceEnabled,AntivirusEnabled,RealTimeProtectionEnabled,AntispywareSignatureVersion,AntivirusSignatureLastUpdated,QuickScanEndTime,FullScanEndTime | Format-List";
+            string result = RunPowerShell(command, 15000);
+            if (result.IndexOf("Get-MpComputerStatus", StringComparison.OrdinalIgnoreCase) >= 0 && result.IndexOf("not recognized", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Microsoft Defender PowerShell cmdlets were not available on this system.";
+            return result;
+        }
+
+        private string GetFirewallSummary()
+        {
+            string command = "Get-NetFirewallProfile | Select-Object Name,Enabled,DefaultInboundAction,DefaultOutboundAction | Format-Table -AutoSize";
+            string result = RunPowerShell(command, 15000);
+            if (String.IsNullOrWhiteSpace(result)) result = RunProcessText("netsh.exe", "advfirewall show allprofiles", 15000);
+            return result;
+        }
+
+        private string GetLogInventory()
+        {
+            try
+            {
+                Directory.CreateDirectory(_logsDir);
+                string[] files = Directory.GetFiles(_logsDir);
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine("Logs folder: " + _logsDir);
+                sb.AppendLine("Total files: " + files.Length.ToString());
+                foreach (string f in files.OrderByDescending(x => File.GetLastWriteTime(x)).Take(5))
+                {
+                    FileInfo info = new FileInfo(f);
+                    sb.AppendLine("- " + info.Name + " | " + info.LastWriteTime.ToString("yyyy-MM-dd HH:mm") + " | " + FormatBytes(info.Length));
+                }
+                return sb.ToString().TrimEnd();
+            }
+            catch (Exception ex) { return "Log inventory unavailable: " + ex.Message; }
+        }
+
+        private string RunPowerShell(string command, int timeoutMs)
+        {
+            return RunProcessText("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -Command " + Q(command), timeoutMs);
+        }
+
+        private string RunProcessText(string fileName, string arguments, int timeoutMs)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = fileName;
+                psi.Arguments = arguments;
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = false;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError = true;
+                using (Process p = new Process())
+                {
+                    p.StartInfo = psi;
+                    p.Start();
+                    if (!p.WaitForExit(timeoutMs))
+                    {
+                        try { p.Kill(); } catch { }
+                        return "Command timed out: " + fileName;
+                    }
+                    string output = p.StandardOutput.ReadToEnd();
+                    string error = p.StandardError.ReadToEnd();
+                    if (!String.IsNullOrWhiteSpace(error)) output += Environment.NewLine + "ERROR: " + error.Trim();
+                    return output.Trim();
+                }
+            }
+            catch (Exception ex) { return "Command failed: " + ex.Message; }
+        }
+
+        private bool IsPendingReboot()
+        {
+            try
+            {
+                if (Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending") != null) return true;
+                if (Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired") != null) return true;
+                using (RegistryKey k = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\Session Manager"))
+                {
+                    if (k != null && k.GetValue("PendingFileRenameOperations") != null) return true;
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private string GetUptime()
+        {
+            try
+            {
+                int ticks = Environment.TickCount & Int32.MaxValue;
+                TimeSpan up = TimeSpan.FromMilliseconds(ticks);
+                return up.Days.ToString() + "d " + up.Hours.ToString() + "h " + up.Minutes.ToString() + "m";
+            }
+            catch { return "Unknown"; }
+        }
+
+        private string FormatBytes(long bytes)
+        {
+            double v = bytes;
+            string[] units = new string[] { "B", "KB", "MB", "GB" };
+            int i = 0;
+            while (v >= 1024 && i < units.Length - 1) { v /= 1024; i++; }
+            return v.ToString("0.0") + " " + units[i];
+        }
+
+        private void OpenHtmlReport()
+        {
+            if (String.IsNullOrWhiteSpace(_lastHtmlPath) || !File.Exists(_lastHtmlPath))
+            {
+                MessageBox.Show(ParentForm, "Run a checkup report first.", "Frontline Checkup Report", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            try { Process.Start(new ProcessStartInfo { FileName = _lastHtmlPath, UseShellExecute = true }); }
+            catch (Exception ex) { MessageBox.Show(ParentForm, ex.Message, "Open Report", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        }
+
+        private void CopyReport()
+        {
+            if (String.IsNullOrWhiteSpace(_lastReportText))
+            {
+                MessageBox.Show(ParentForm, "Run a checkup report first.", "Frontline Checkup Report", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            try
+            {
+                Clipboard.SetText(_lastReportText);
+                MessageBox.Show(ParentForm, "Report copied to clipboard.", "Frontline Checkup Report", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex) { MessageBox.Show(ParentForm, ex.Message, "Copy Report", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        }
+
+        private void SaveAsReport()
+        {
+            if (String.IsNullOrWhiteSpace(_lastReportText))
+            {
+                MessageBox.Show(ParentForm, "Run a checkup report first.", "Frontline Checkup Report", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            using (SaveFileDialog dlg = new SaveFileDialog())
+            {
+                dlg.Title = "Save Frontline Checkup Report";
+                dlg.Filter = "Text Report (*.txt)|*.txt|HTML Report (*.html)|*.html";
+                dlg.FileName = "frontline_checkup_report_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt";
+                if (dlg.ShowDialog(ParentForm) != DialogResult.OK) return;
+                string content = dlg.FileName.EndsWith(".html", StringComparison.OrdinalIgnoreCase) ? _lastReportHtml : _lastReportText;
+                File.WriteAllText(dlg.FileName, content, Encoding.UTF8);
+                MessageBox.Show(ParentForm, "Saved:\r\n" + dlg.FileName, "Frontline Checkup Report", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        private void OpenReportsFolder()
+        {
+            try
+            {
+                Directory.CreateDirectory(_logsDir);
+                Process.Start("explorer.exe", _logsDir);
+            }
+            catch (Exception ex) { MessageBox.Show(ParentForm, ex.Message, "Open Reports Folder", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        }
+
+        private void ClearOutput()
+        {
+            if (_outputBox == null) return;
+            if (_outputBox.InvokeRequired) { _outputBox.BeginInvoke(new MethodInvoker(ClearOutput)); return; }
+            _outputBox.Clear();
+        }
+
+        private void AppendOutput(string text)
+        {
+            if (_outputBox == null) return;
+            if (_outputBox.InvokeRequired) { _outputBox.BeginInvoke(new Action<string>(AppendOutput), text); return; }
+            _outputBox.AppendText(text + Environment.NewLine);
+            _outputBox.SelectionStart = _outputBox.TextLength;
+            _outputBox.ScrollToCaret();
+        }
+
+        private void SetButtonsEnabled(bool enabled)
+        {
+            if (InvokeRequired) { BeginInvoke(new Action<bool>(SetButtonsEnabled), enabled); return; }
+            foreach (Button b in _buttons) b.Enabled = enabled;
+        }
+
+        private void SetStatus(string text, bool running)
+        {
+            if (InvokeRequired) { BeginInvoke(new Action<string, bool>(SetStatus), text, running); return; }
+            _statusLabel.Text = text;
+            if (running) { _progressBar.Style = ProgressBarStyle.Marquee; _progressBar.MarqueeAnimationSpeed = 30; }
+            else { _progressBar.MarqueeAnimationSpeed = 0; _progressBar.Style = ProgressBarStyle.Blocks; _progressBar.Value = 0; }
+        }
+
+        private static bool IsAdministrator()
+        {
+            try { return new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator); }
+            catch { return false; }
+        }
+
+        private static string Q(string v)
+        {
+            if (v == null) return "\"\"";
+            return "\"" + v.Replace("\"", "\\\"") + "\"";
+        }
+
+        private static string Now() { return DateTime.Now.ToString("HH:mm:ss"); }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
